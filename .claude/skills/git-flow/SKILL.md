@@ -11,6 +11,10 @@ description: |
   any repository operations. Triggers on phrases like "create feature",
   "start release", "finish hotfix", "commit changes", "merge branch",
   "git status", "branch management", "version bump".
+
+  CRITICAL RULES:
+  1. ALL commit/push/tag/merge messages MUST include BOTH what changed AND why
+  2. NEVER include AI attribution like "Co-Authored-By", "Claude", "Anthropic"
 ---
 
 # Git-Flow: Elite GitFlow Repository Manager
@@ -90,7 +94,78 @@ Do you authorize this operation? (yes/no)
 - **Why**: Business/technical reason for the change
 - **Files affected**: List of modified files (from git status/diff)
 
-### 5. Ambiguity Resolution
+### 5. Commit Message Standards (MANDATORY)
+
+**TODAS as mensagens SEM EXCEPÇÃO devem incluir:**
+- **O que foi alterado**: Descrição clara da modificação
+- **O motivo**: Razão de negócio/técnica para a alteração
+
+**Formato obrigatório:**
+```
+tipo(escopo): o que foi feito
+
+Corpo explicando o motivo da alteração, contexto e justificação.
+Incluir referências a issues ou tickets quando aplicável.
+```
+
+**Exemplos corretos:**
+```
+feat(auth): implementar validação JWT
+
+Adiciona middleware para validar tokens JWT em rotas protegidas.
+Motivo: Requisito de segurança para proteger endpoints sensíveis.
+Inclui mecanismo de refresh para sessões longas.
+
+Refs: #123
+```
+
+```
+fix(database): corrigir timeout de conexão
+
+Aumenta timeout de 5s para 30s para evitar falhas em queries lentas.
+Motivo: Reports de erros em produção durante picos de tráfego.
+
+Closes: #456
+```
+
+**NUNCA enviar mensagens genéricas como:**
+- "update files"
+- "fix bug"
+- "changes"
+- "WIP"
+- Sem descrição do motivo
+
+### 6. No AI Attribution (MANDATORY)
+
+**NENHUMA interação deve reflectir que foi usado o agente Claude:**
+
+**PROIBIDO incluir em qualquer mensagem:**
+- `Co-Authored-By:`
+- `Claude Opus 4.6`
+- `<noreply@anthropic.com>`
+- `Generated with Claude`
+- `Claude Code`
+- Qualquer referência à Anthropic ou a agentes de IA
+
+**Exemplo de commit message CORRETA:**
+```
+feat(api): adicionar endpoint de autenticação
+
+Implementa endpoint POST /auth/login para validar credenciais.
+Motivo: Requisito do sprint para autenticação de utilizadores.
+Inclui validação de input e geração de tokens JWT.
+```
+
+**Exemplo de commit message INCORRETA:**
+```
+feat(api): adicionar endpoint de autenticação
+
+Implementa endpoint POST /auth/login para validar credenciais.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+```
+
+### 7. Ambiguity Resolution
 
 When multiple valid options exist:
 1. Present a numbered list of options
@@ -276,8 +351,9 @@ Follow **Conventional Commits** specification:
 ```
 feat(auth): implement JWT token validation
 
-Adds middleware to verify JWT tokens on protected routes.
-Includes token refresh mechanism for long-lived sessions.
+Adiciona middleware para verificar tokens JWT em rotas protegidas.
+Motivo: Requisito de segurança para endpoints sensíveis.
+Inclui mecanismo de refresh para sessões longas.
 
 Closes #123
 ```
@@ -500,16 +576,14 @@ Modified files:
 - go.mod (added jwt dependency)
 
 Enter commit message following conventional format:
-type(scope): subject
+tipo(escopo): o que foi feito
+
+Corpo: explicação do motivo e contexto
 
 Suggested: feat(auth): implement JWT middleware for token validation
 
-Type: feat
-Scope: auth
-Subject: implement JWT middleware for token validation
-
-Body: Adds JWT token validation middleware to protect routes.
-Includes configurable token expiration and refresh mechanism.
+Motivo: Requisito de segurança sprint 3 para proteger rotas sensíveis.
+Inclui mecanismo de refresh para sessões longas.
 
 Is this message acceptable? (yes/edit/abort)
 ```
