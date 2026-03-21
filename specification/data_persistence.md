@@ -124,12 +124,21 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - **Projection:** Only request fields needed for the specific query
 - **No N+1:** Query implementations shall avoid N+1 query patterns
 
-**Pagination Requirements:**
-- **Consistent Pagination:** All data layer implementations use same pagination model
-- **Page Size:** Default 20, maximum 100 items per page
-- **Offset/Limit:** Use OFFSET/LIMIT for SQL; skip/limit for MongoDB; range queries for Cassandra
-- **Cursor Support:** Optional cursor-based pagination for Redis and high-volume scenarios
-- **Total Count:** Return total item count for pagination UI
+**Pagination Requirements (Limit-Offset):**
+- **Consistent Pagination:** All data layer implementations use same limit-offset pagination model
+- **Limit:** Number of records requested; default 20, maximum 100
+- **Offset:** Starting position (0-based); e.g., offset 0 = first record, offset 20 = second page with limit 20
+- **Database Implementation:**
+  - SQL: Use LIMIT/OFFSET clauses
+  - MongoDB: Use skip() and limit()
+  - Redis: Use LRANGE or similar range operations
+  - Cassandra: Use token-based paging or LIMIT with WHERE clause
+- **Response Fields:** Must include:
+  - Total records matching query
+  - Total pages (calculated as ceil(Total / Limit))
+  - Current page (calculated as Offset/Limit + 1)
+  - HasNext/HasPrev flags
+- **Cursor Support:** Optional cursor-based pagination for very large datasets
 - **Threshold:** Automatic pagination for queries returning >50 records
 
 **Fast Check Operations:**
@@ -300,6 +309,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 | 2026-03-21 | Update | Added Requirement 9 (Redis Storage Support) and Requirement 10 (In-Memory Storage Support) |
 | 2026-03-21 | Update | Added Requirement 5 efficiency requirements (minimize round trips, single invocation for consolidated queries) |
 | 2026-03-21 | Update | Added pagination requirements and fast check operation requirements to Requirement 5 |
+| 2026-03-21 | Update | Updated pagination to limit-offset principle with total records and total pages in response |
 
 ## Acceptance Criteria
 

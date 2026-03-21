@@ -246,31 +246,39 @@ client, err := golikeit.New(
 
 **Description:** All query operations that may return more than 50 records shall use a consistent pagination mechanism.
 
-**Pagination Model:**
+**Pagination Model (Limit-Offset):**
 ```go
 type Pagination struct {
-    Page    int // 1-based page number
-    PerPage int // Items per page (max 100)
+    Limit  int // Number of records requested (max 100)
+    Offset int // Starting position (0-based)
 }
 
 type PaginatedResult[T] struct {
-    Items      []T   // Current page items
-    Total      int64 // Total items across all pages
-    Page       int   // Current page number
-    PerPage    int   // Items per page
-    TotalPages int   // Total number of pages
-    HasNext    bool  // Whether there is a next page
-    HasPrev    bool  // Whether there is a previous page
+    Items       []T   // Current page items
+    Total       int64 // Total records matching query
+    TotalPages  int   // Total number of pages (calculated from Total/Limit)
+    CurrentPage int   // Current page number (1-based, calculated from Offset/Limit)
+    Limit       int   // Records per page (as requested)
+    Offset      int   // Current offset position
+    HasNext     bool  // Whether there are more records after this page
+    HasPrev     bool  // Whether there are records before this page
 }
 ```
 
+**Limit-Offset Principle:**
+- **Limit:** Indicates how many records are requested (e.g., 20)
+- **Offset:** Indicates the starting position (0-based, e.g., 0 for first page, 20 for second page)
+- **Page Calculation:** Page = (Offset / Limit) + 1
+- **Total Pages:** Calculated as ceil(Total / Limit)
+
 **Requirements:**
 - **Threshold:** Pagination is mandatory for queries potentially returning >50 records
-- **Default Page Size:** 20 items per page (configurable)
-- **Maximum Page Size:** 100 items per page (enforced)
-- **Page Numbering:** 1-based (first page is 1, not 0)
+- **Default Limit:** 20 records per request (configurable)
+- **Maximum Limit:** 100 records per request (enforced)
+- **Offset:** 0-based (first record starts at 0)
+- **Page Calculation:** Current page derived from Offset/Limit (Page = Offset/Limit + 1)
 - **Consistent Ordering:** Results ordered by timestamp descending (newest first)
-- **Total Count:** Include total item count for UI pagination controls
+- **Total Count:** Include total record count and total pages for UI pagination controls
 - **Cursor Support:** Optional cursor-based pagination for very large datasets (>10,000 items)
 
 **Affected Operations:**
@@ -397,6 +405,7 @@ state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
 | 2026-03-21 | Update | Added Requirement 9 (Caching Layer) and Requirement 10 (Bulk Operations) |
 | 2026-03-21 | Update | Added GetUserLikes, GetUserDislikes, GetEntityReactionsWithUsers operations; added consolidated query operations with counts and recent users |
 | 2026-03-21 | Update | Added Requirement 11 (Pagination Support) and Requirement 12 (Fast Reaction Check Operations) |
+| 2026-03-21 | Update | Updated pagination to use limit-offset principle; response includes total records and total pages |
 
 ## Acceptance Criteria
 
