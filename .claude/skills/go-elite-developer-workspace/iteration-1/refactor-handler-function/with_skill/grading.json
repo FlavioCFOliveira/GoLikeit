@@ -1,0 +1,52 @@
+{
+  "run_id": "refactor-handler-function-with_skill",
+  "eval_id": 2,
+  "run_type": "with_skill",
+  "expectations": [
+    {
+      "text": "Não usa variáveis globais (db é injetado)",
+      "passed": true,
+      "evidence": "Constructor injection: NewSQLUserRepository(db), NewUserHandler(service, logger)"
+    },
+    {
+      "text": "Define interface UserRepository com implementação SQL",
+      "passed": true,
+      "evidence": "UserRepository interface em repository/interface.go com SQLUserRepository"
+    },
+    {
+      "text": "Camada de serviço separada com lógica de negócio",
+      "passed": true,
+      "evidence": "Service layer em service/user_service.go com business logic"
+    },
+    {
+      "text": "Todos os erros são tratados (incluindo json.Marshal, json.Decode)",
+      "passed": true,
+      "evidence": "Todos os erros wrapped com context: fmt.Errorf(\"...: %w\", err)"
+    },
+    {
+      "text": "Validação explícita de inputs",
+      "passed": true,
+      "evidence": "UserCreateRequest.Validate() e Sanitize() methods"
+    },
+    {
+      "text": "Testes table-driven para handler, service e repository",
+      "passed": true,
+      "evidence": "Testes para handler, service e repository usando mocks"
+    },
+    {
+      "text": "Usa padrão construtor para injeção de dependências",
+      "passed": true,
+      "evidence": "NewService, NewSQLUserRepository, NewUserHandler"
+    },
+    {
+      "text": "Separação clara entre handler (HTTP), service (business), repository (data)",
+      "passed": true,
+      "evidence": "3 layers: Handler -> Service -> Repository, cada um com responsabilidade única"
+    }
+  ],
+  "summary": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0
+  }
+}

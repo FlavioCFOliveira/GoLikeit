@@ -1,0 +1,52 @@
+{
+  "run_id": "implement-cache-service-with_skill",
+  "eval_id": 1,
+  "run_type": "with_skill",
+  "expectations": [
+    {
+      "text": "Define uma interface Cache com os métodos requeridos",
+      "passed": true,
+      "evidence": "Interface Cache definida com Get, Set, Delete, Clear e Len"
+    },
+    {
+      "text": "Implementa LRU corretamente usando container/list ou similar",
+      "passed": true,
+      "evidence": "Usa container/list para O(1) LRU operations"
+    },
+    {
+      "text": "Suporta TTL para expiração automática de entradas",
+      "passed": true,
+      "evidence": "TTL suportado com per-entry expiration timestamps e background cleanup"
+    },
+    {
+      "text": "Usa sync.RWMutex ou similar para thread-safety",
+      "passed": true,
+      "evidence": "sync.RWMutex com read lock para Get, write lock para mutations"
+    },
+    {
+      "text": "Tem testes table-driven cobrindo casos normais e edge cases",
+      "passed": true,
+      "evidence": "17 testes table-driven incluindo concurrent access, TTL expiration, LRU eviction"
+    },
+    {
+      "text": "Inclui benchmarks para medição de performance",
+      "passed": true,
+      "evidence": "5 benchmarks incluindo Set, Get, SetAndGet, SetWithTTL, ConcurrentReadWrite"
+    },
+    {
+      "text": "Minimiza alocações (zero ou próximo disso em reads)",
+      "passed": true,
+      "evidence": "Get: 0 allocs/op, Set: 1 alloc/op - resultados dos benchmarks"
+    },
+    {
+      "text": "Segue convenções Go (nomes, estrutura, godoc)",
+      "passed": true,
+      "evidence": "godoc comments para todos os exports, go fmt aplicado, nomes idiomáticos"
+    }
+  ],
+  "summary": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0
+  }
+}

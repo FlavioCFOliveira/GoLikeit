@@ -1,0 +1,26 @@
+{
+  "skill_name": "go-elite-developer",
+  "evals": [
+    {
+      "id": 1,
+      "name": "implement-cache-service",
+      "prompt": "Implementa um serviço de cache em Go (cache de memória LRU com TTL) que deve incluir:\n\n1. Interface Cache com métodos: Get(key string), Set(key string, value interface{}, ttl time.Duration), Delete(key string), Clear()\n2. Implementação LRU que evita memory leaks\n3. Suporte a TTL automático para expiração de entradas\n4. Thread-safe para uso concorrente\n5. Testes completos com race detection\n6. Benchmarks para verificar performance\n\nO serviço deve seguir as melhores práticas de Go idiomatic, mínimo de alocações, e arquitetura simples.",
+      "expected_output": "Um package cache com implementação LRU+TTL thread-safe, testes table-driven, benchmarks, e boa separação de responsabilidades. Código deve passar go vet e go fmt.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "refactor-handler-function",
+      "prompt": "Refatora o seguinte código Go para seguir as melhores práticas de elite:\n\n```go\npackage handlers\n\nimport (\n    \"database/sql\"\n    \"encoding/json\"\n    \"net/http\"\n)\n\nvar db *sql.DB\n\nfunc Handler(w http.ResponseWriter, r *http.Request) {\n    if r.Method == \"GET\" {\n        rows, err := db.Query(\"SELECT id, name FROM users\")\n        if err != nil {\n            http.Error(w, err.Error(), 500)\n            return\n        }\n        defer rows.Close()\n        \n        users := []User{}\n        for rows.Next() {\n            u := User{}\n            rows.Scan(&u.ID, &u.Name)\n            users = append(users, u)\n        }\n        \n        data, _ := json.Marshal(users)\n        w.Header().Set(\"Content-Type\", \"application/json\")\n        w.Write(data)\n    } else if r.Method == \"POST\" {\n        var u User\n        json.NewDecoder(r.Body).Decode(&u)\n        \n        result, err := db.Exec(\"INSERT INTO users (name) VALUES ($1)\", u.Name)\n        if err != nil {\n            http.Error(w, err.Error(), 500)\n            return\n        }\n        \n        id, _ := result.LastInsertId()\n        w.WriteHeader(201)\n        json.NewEncoder(w).Encode(map[string]int64{\"id\": id})\n    }\n}\n\ntype User struct {\n    ID   int\n    Name string\n}\n```\n\nProblemas para resolver:\n1. Package-level db (variável global)\n2. Sem validação de input\n3. Erros não tratados (json.Marshal, json.Decode, etc)\n4. Não há abstração de repositório\n5. Handler faz demasiadas coisas\n6. Sem testes\n\nCria a versão refatorada com separação de responsabilidades, injeção de dependências, testes e tratamento de erros adequado.",
+      "expected_output": "Código refatorado com estrutura handler -> service -> repository, sem variáveis globais, tratamento de erros completo, testes table-driven, e separação clara de responsabilidades.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "create-rate-limiter",
+      "prompt": "Implementa um rate limiter em Go para API HTTP com as seguintes características:\n\n1. Algoritmo token bucket\n2. Configuração por endpoint (diferentes limites para diferentes rotas)\n3. Suporte a Redis para rate limiting distribuído (mas também funciona in-memory)\n4. Middleware HTTP que pode ser aplicado a handlers específicos\n5. Resposta 429 quando o limite é excedido com header Retry-After\n6. Testes unitários e de integração\n\nConsiderações de design:\n- Performance é crítica (mínimas alocações por request)\n- Deve ser thread-safe\n- Interface para permitir diferentes backends (memory vs redis)\n\nSegue princípios de código de elite: simplicidade, testabilidade, e arquitetura limpa.",
+      "expected_output": "Package ratelimit com implementação token bucket, interface para storage, middleware HTTP, testes completos, benchmarks, e design que permite swap entre memory e Redis backends.",
+      "files": []
+    }
+  ]
+}

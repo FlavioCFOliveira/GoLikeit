@@ -1,0 +1,39 @@
+{
+  "eval_id": 2,
+  "eval_name": "refactor-handler-function",
+  "prompt": "Refatora código Go com problemas: variável global db, sem validação de input, erros não tratados, sem abstração de repositório, handler faz demasiadas coisas, sem testes. Cria versão refatorada com separação de responsabilidades, injeção de dependências, testes e tratamento de erros adequado.",
+  "assertions": [
+    {
+      "name": "no_global_state",
+      "description": "Não usa variáveis globais (db é injetado)"
+    },
+    {
+      "name": "has_repository_abstraction",
+      "description": "Define interface UserRepository com implementação SQL"
+    },
+    {
+      "name": "has_service_layer",
+      "description": "Camada de serviço separada com lógica de negócio"
+    },
+    {
+      "name": "proper_error_handling",
+      "description": "Todos os erros são tratados (incluindo json.Marshal, json.Decode)"
+    },
+    {
+      "name": "input_validation",
+      "description": "Validação explícita de inputs"
+    },
+    {
+      "name": "has_comprehensive_tests",
+      "description": "Testes table-driven para handler, service e repository"
+    },
+    {
+      "name": "uses_dependency_injection",
+      "description": "Usa padrão construtor para injeção de dependências"
+    },
+    {
+      "name": "clear_separation_of_concerns",
+      "description": "Separação clara entre handler (HTTP), service (business), repository (data)"
+    }
+  ]
+}

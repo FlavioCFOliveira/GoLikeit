@@ -1,0 +1,39 @@
+{
+  "eval_id": 3,
+  "eval_name": "create-rate-limiter",
+  "prompt": "Implementa um rate limiter em Go para API HTTP com: algoritmo token bucket, configuração por endpoint, suporte a Redis e in-memory, middleware HTTP, resposta 429 com Retry-After, testes unitários e de integração. Performance é crítica (mínimas alocações), thread-safe, interface para diferentes backends.",
+  "assertions": [
+    {
+      "name": "implements_token_bucket",
+      "description": "Implementa algoritmo token bucket corretamente"
+    },
+    {
+      "name": "has_backend_interface",
+      "description": "Define interface Backend para permitir swap memory/Redis"
+    },
+    {
+      "name": "has_middleware",
+      "description": "Implementa middleware HTTP para integração"
+    },
+    {
+      "name": "returns_429_with_retry_after",
+      "description": "Retorna HTTP 429 com header Retry-After quando limit excedido"
+    },
+    {
+      "name": "thread_safe",
+      "description": "Thread-safe para uso concorrente"
+    },
+    {
+      "name": "minimizes_allocations",
+      "description": "Mínimas alocações no hot path (request path)"
+    },
+    {
+      "name": "has_tests_and_benchmarks",
+      "description": "Testes unitários, de integração e benchmarks"
+    },
+    {
+      "name": "per_endpoint_config",
+      "description": "Suporta configuração diferente por endpoint/rota"
+    }
+  ]
+}
