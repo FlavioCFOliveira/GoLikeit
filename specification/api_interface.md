@@ -22,6 +22,11 @@ The system shall expose a public API that allows consuming applications to integ
 - GetUserReactions(ctx, user_id, options) ([]Reaction, error)
 - GetEntityReactions(ctx, entity_type, entity_id, options) ([]Reaction, error)
 
+**Bulk Operations:**
+- GetUserReactionsBulk(ctx, user_id, entityTargets) (map[EntityTarget]ReactionState, error)
+- GetEntityCountsBulk(ctx, entityTargets) (map[EntityTarget]ReactionCounts, error)
+- GetMultipleUserReactions(ctx, userIDs, entity_type, entity_id) (map[string]ReactionState, error)
+
 **Requirements:**
 - All operations accept a context.Context for cancellation and timeouts
 - All operations return (result, error) tuples
@@ -34,6 +39,7 @@ The system shall expose a public API that allows consuming applications to integ
 
 **Inputs:**
 - Database configuration (type, connection string, pool settings)
+- Optional: Cache configuration (enabled, TTL, max size)
 - Optional: Logger interface
 - Optional: Metrics collector interface
 - Optional: Custom validator functions
@@ -47,6 +53,7 @@ The system shall expose a public API that allows consuming applications to integ
 - Invalid configurations shall return descriptive errors
 - The client shall be safe for concurrent use
 - Resources shall be properly initialized during construction
+- Cache layer shall be initialized if enabled
 
 ### Requirement 3: Context Support
 
@@ -160,6 +167,62 @@ client, err := golikeit.New(
 - Supports advanced use cases through progressive disclosure
 - Follows Go idioms for library design
 
+### Requirement 9: Caching Layer
+
+**Description:** The system shall provide an optional caching layer to avoid database access and improve response times.
+
+**Cache Configuration:**
+- **Enabled:** Cache can be enabled/disabled via configuration
+- **TTL:** Time-to-live for cached entries (configurable, default 5 minutes)
+- **Max Size:** Maximum number of entries in cache (configurable, default 10,000)
+- **Eviction Policy:** LRU (Least Recently Used) eviction when max size reached
+
+**Cached Data:**
+- **User Reactions:** Individual user reaction states are cached
+- **Entity Counts:** Aggregated reaction counts per entity are cached
+- **Cache Keys:** Composite keys including user_id, entity_type, entity_id
+
+**Cache Invalidation:**
+- Cache entries are invalidated on reaction state changes
+- Write operations (Like, Unlike, Dislike, Undislike) trigger invalidation
+- Bulk invalidation supported for entity-level cache clearing
+- TTL-based expiration for automatic stale data removal
+
+**Requirements:**
+- Cache must be thread-safe for concurrent access
+- Cache misses shall transparently fall back to database
+- Cache hit/miss metrics shall be exposed
+- Cache warming not required; lazy loading acceptable
+
+**Rationale:**
+- Reduces database load for read-heavy workloads
+- Improves response times for frequently accessed data
+- Critical for high-concurrency scenarios
+
+### Requirement 10: Bulk Operations
+
+**Description:** The API shall support bulk operations for efficient batch processing.
+
+**Bulk Operations:**
+- **GetUserReactionsBulk:** Retrieve reaction states for multiple entity targets for a single user
+  - Input: user_id, slice of (entity_type, entity_id) tuples
+  - Output: Map of entity target to reaction state
+
+- **GetEntityCountsBulk:** Retrieve counts for multiple entity targets
+  - Input: Slice of (entity_type, entity_id) tuples
+  - Output: Map of entity target to reaction counts
+
+- **GetMultipleUserReactions:** Retrieve reactions from multiple users for a single entity
+  - Input: Slice of user_ids, entity_type, entity_id
+  - Output: Map of user_id to reaction state
+
+**Requirements:**
+- Bulk operations shall minimize database round trips
+- Bulk operations shall respect context cancellation
+- Maximum batch size shall be enforced (configurable, default 100)
+- Partial failures shall return successful results with error indicators
+- Bulk operations shall leverage cache when available
+
 ## Constraints and Limitations
 
 1. **Library API Only:** The system provides a Go library API, not HTTP/gRPC endpoints. Network APIs are the responsibility of the consuming application.
@@ -173,6 +236,8 @@ client, err := golikeit.New(
 5. **No Event Hooks:** The API does not provide event callbacks; observing changes is the responsibility of the consuming application.
 
 6. **Simple Configuration Focus:** The API prioritizes simplicity over exhaustive configurability; edge cases may require custom wrappers.
+
+7. **Cache Limitations:** Cache is optional and in-process only; distributed caching is not provided. Cache invalidation is the responsibility of the module when configured.
 
 ## API Usage Example
 
@@ -227,7 +292,8 @@ state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
 |------|--------|-------------|
 | 2026-03-21 | Initial | First version of API interface specification |
 | 2026-03-21 | Update | Added duplicate reaction error types for idempotency; updated examples to reflect Reaction Target and User Reaction concepts |
-| 2026-03-21 | Update | Added Requirement 8 (Simple Configuration API) with fluent interface pattern
+| 2026-03-21 | Update | Added Requirement 8 (Simple Configuration API) with fluent interface pattern |
+| 2026-03-21 | Update | Added Requirement 9 (Caching Layer) and Requirement 10 (Bulk Operations) |
 
 ## Acceptance Criteria
 
@@ -245,3 +311,7 @@ state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
 12. **AC12:** Configuration uses functional options pattern or builder for extensibility
 13. **AC13:** Configuration errors are caught at initialization with clear messages
 14. **AC14:** All exported types have clear documentation with usage examples
+15. **AC15:** Cache can be enabled/disabled via configuration with configurable TTL
+16. **AC16:** Cache invalidation occurs on reaction state changes
+17. **AC17:** Bulk operations minimize database round trips
+18. **AC18:** Bulk operations enforce maximum batch size limits

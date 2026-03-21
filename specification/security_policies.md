@@ -4,6 +4,35 @@
 
 The system shall implement security policies that protect reaction data while maintaining flexibility for consuming applications. As a library module, the system focuses on data integrity, safe handling of inputs, and secure defaults, while deferring authentication and authorization to the consuming application.
 
+## Security-First Policy
+
+### Principle: Security by Design
+
+Security is not an afterthought—it is a fundamental design principle that influences every architectural and implementation decision. This module adopts a **"Security First"** approach where security considerations take precedence over convenience.
+
+### Security-First Requirements
+
+1. **Secure Defaults:** All configuration options default to the most secure setting. Users must explicitly opt into less secure configurations.
+
+2. **Input Validation:** All inputs are treated as untrusted and validated rigorously before processing.
+
+3. **Least Privilege:** The module operates with the minimum necessary privileges and assumes minimal trust in external components.
+
+4. **Defense in Depth:** Security controls are layered; no single control is the sole line of defense.
+
+5. **Fail Secure:** When errors occur, the system fails to a secure state, not an insecure one.
+
+6. **Explicit Over Implicit:** Security-relevant behaviors are explicit, not implicit or assumed.
+
+7. **Audit Everything:** All security-relevant operations are logged for accountability and forensics.
+
+### Security Review Process
+
+- Every design decision must consider security implications
+- Every implementation must be reviewed for security vulnerabilities
+- Every dependency must be evaluated for security risks
+- Security testing is mandatory, not optional
+
 ## Functional Requirements
 
 ### Requirement 1: Input Validation
@@ -123,6 +152,8 @@ The system shall implement security policies that protect reaction data while ma
 
 6. **Audit Immutability:** Audit log entries cannot be deleted or modified through any API, ensuring tamper-proof audit trails.
 
+7. **Security-First Overrides:** In cases where security conflicts with convenience or performance, security takes precedence unless explicitly overridden with clear documentation of risks.
+
 ## Security Checklist
 
 | Control | Implementation | Verification |
@@ -147,6 +178,7 @@ The system shall implement security policies that protect reaction data while ma
 |------|--------|-------------|
 | 2026-03-21 | Initial | First version of security policies specification |
 | 2026-03-21 | Update | Updated Requirement 7 to reflect mandatory, immutable audit logging with insert/get-only operations |
+| 2026-03-21 | Update | Added Security-First Policy section with security-by-design principles |
 
 ## Acceptance Criteria
 
@@ -161,3 +193,6 @@ The system shall implement security policies that protect reaction data while ma
 9. **AC9:** All state-changing operations create immutable audit entries
 10. **AC10:** Audit logging is mandatory and includes complete operation metadata
 11. **AC11:** No API exists to delete or modify audit entries
+12. **AC12:** Security takes precedence over convenience in design decisions
+13. **AC13:** All configuration defaults are secure by default
+14. **AC14:** Security vulnerabilities are treated as critical bugs

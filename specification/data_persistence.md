@@ -8,17 +8,27 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 
 ### Requirement 1: Multi-Database Support
 
-**Description:** The system shall support PostgreSQL, MariaDB, and SQLite as storage backends.
+**Description:** The system shall support PostgreSQL, MariaDB, SQLite, MongoDB, and Cassandra as storage backends.
 
 **Supported Backends:**
 - **PostgreSQL:** Versions 12 and above
 - **MariaDB:** Versions 10.5 and above
 - **SQLite:** Version 3.35.0 and above (with WAL mode support)
+- **MongoDB:** Versions 4.4 and above
+- **Cassandra:** Versions 3.11 and above (CQL compatible)
 
 **Requirements:**
 - The system shall detect or be configured with the target database type
-- Database-specific optimizations may be used, but behavior shall remain consistent
+- Database-specific optimizations shall be applied for maximum performance
+- Behavior shall remain consistent across all supported backends
 - Connection pooling shall be supported where applicable
+
+**Database-Specific Optimizations:**
+- **PostgreSQL:** Use prepared statements, proper index types, connection pooling with pgx
+- **MariaDB:** Use InnoDB engine, connection pooling, query caching where appropriate
+- **SQLite:** Use WAL mode, appropriate cache size, single-writer optimizations
+- **MongoDB:** Use compound indexes, aggregation pipelines for counts, connection pooling
+- **Cassandra:** Use appropriate replication factor, partition key design, prepared statements, batch operations where applicable
 
 ### Requirement 2: Data Integrity
 
@@ -120,10 +130,35 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 **Description:** The system shall manage database connections efficiently.
 
 **Requirements:**
-- Connection pooling shall be supported for PostgreSQL and MariaDB
+- Connection pooling shall be supported for PostgreSQL, MariaDB, MongoDB, and Cassandra
 - Connection timeouts shall be configurable
 - Failed connections shall be reported with clear error messages
 - Resources shall be properly released on shutdown
+- Connection strings shall be validated at startup
+
+### Requirement 8: Performance Optimization
+
+**Description:** All database interactions shall be optimized for maximum performance.
+
+**Query Optimization Requirements:**
+- **Index Usage:** All queries must use appropriate indexes; full table scans are prohibited for hot paths
+- **Prepared Statements:** Use prepared statements for all repeated queries
+- **Batch Operations:** Support batch inserts/updates where applicable
+- **Projection:** Queries shall request only necessary fields, not use SELECT *
+- **Connection Reuse:** Connections must be returned to the pool promptly
+- **Query Plan Review:** Query patterns shall be reviewed for optimal execution plans
+
+**Database-Specific Performance:**
+- **PostgreSQL:** Use EXPLAIN ANALYZE for query review; implement partial indexes where beneficial
+- **MariaDB:** Use EXPLAIN for query review; consider covering indexes
+- **SQLite:** Use EXPLAIN QUERY PLAN; optimize for single-writer scenarios
+- **MongoDB:** Use explain() for query review; design indexes for query patterns
+- **Cassandra:** Design tables for query patterns; avoid ALLOW FILTERING
+
+**Monitoring:**
+- Slow query logging (configurable threshold)
+- Query execution time metrics
+- Connection pool utilization metrics
 
 ## Constraints and Limitations
 
@@ -133,11 +168,15 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 
 3. **SQLite Limitations:** SQLite has reduced concurrency compared to PostgreSQL and MariaDB. Write operations are serialized at the database level.
 
-4. **No Cross-Database Replication:** The system does not provide built-in replication between different database types.
+4. **MongoDB Considerations:** MongoDB uses eventual consistency for some operations; transaction support requires replica sets.
 
-5. **No Embedded Cache:** The data persistence layer does not include application-level caching; this is the responsibility of higher layers.
+5. **Cassandra Considerations:** Cassandra prioritizes availability over consistency; design requires careful partition key selection.
 
-6. **Independent Audit Storage:** While reaction data uses the configured primary storage, audit logging may be configured to use a separate database. See [audit_logging.md](audit_logging.md) for details.
+6. **No Cross-Database Replication:** The system does not provide built-in replication between different database types.
+
+7. **No Embedded Cache:** The data persistence layer does not include application-level caching; this is the responsibility of higher layers.
+
+8. **Independent Audit Storage:** While reaction data uses the configured primary storage, audit logging may be configured to use a separate database. See [audit_logging.md](audit_logging.md) for details.
 
 ## Relationships with Other Functional Blocks
 
@@ -155,19 +194,25 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 | 2026-03-21 | Update | Clarified reaction timestamp represents moment of LIKE/DISLIKE action; removed updated_at field |
 | 2026-03-21 | Update | Updated data model to reflect User Reaction and Reaction Target concepts; added duplicate detection requirements |
 | 2026-03-21 | Update | Added note about independent audit storage capability |
+| 2026-03-21 | Update | Added MongoDB and Cassandra support; added Requirement 8 (Performance Optimization) |
 
 ## Acceptance Criteria
 
 1. **AC1:** The system supports PostgreSQL 12+ as a storage backend
 2. **AC2:** The system supports MariaDB 10.5+ as a storage backend
 3. **AC3:** The system supports SQLite 3.35.0+ as a storage backend
-4. **AC4:** All User Reaction data includes required fields (id, user_id, entity_type, entity_id, reaction_type, created_at)
-5. **AC5:** The combination of (user_id, entity_type, entity_id) is unique across the system (User Reaction uniqueness)
-6. **AC6:** Creating a User Reaction and updating Reaction Target counts is atomic
-7. **AC7:** Removing a User Reaction and updating Reaction Target counts is atomic
-8. **AC8:** Failed operations do not leave partial data in the database
-9. **AC9:** Queries by (user_id, entity_type, entity_id) use indexed lookups
-10. **AC10:** Schema migrations are versioned and tracked
-11. **AC11:** Migration scripts are provided for all supported databases
-12. **AC12:** Connection pooling is supported for PostgreSQL and MariaDB
-13. **AC13:** Duplicate LIKE/DISLIKE attempts are detected and rejected with no database changes
+4. **AC4:** The system supports MongoDB 4.4+ as a storage backend
+5. **AC5:** The system supports Cassandra 3.11+ as a storage backend
+6. **AC6:** All User Reaction data includes required fields (id, user_id, entity_type, entity_id, reaction_type, created_at)
+7. **AC7:** The combination of (user_id, entity_type, entity_id) is unique across the system (User Reaction uniqueness)
+8. **AC8:** Creating a User Reaction and updating Reaction Target counts is atomic
+9. **AC9:** Removing a User Reaction and updating Reaction Target counts is atomic
+10. **AC10:** Failed operations do not leave partial data in the database
+11. **AC11:** Queries by (user_id, entity_type, entity_id) use indexed lookups
+12. **AC12:** Schema migrations are versioned and tracked
+13. **AC13:** Migration scripts are provided for all supported databases
+14. **AC14:** Connection pooling is supported for PostgreSQL, MariaDB, MongoDB, and Cassandra
+15. **AC15:** Duplicate LIKE/DISLIKE attempts are detected and rejected with no database changes
+16. **AC16:** All queries use appropriate indexes; no full table scans on hot paths
+17. **AC17:** Prepared statements are used for all repeated queries
+18. **AC18:** Query execution times are logged and monitored

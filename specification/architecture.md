@@ -132,6 +132,33 @@ The system shall be organized into distinct architectural layers with clear sepa
 
 **Description:** The entire module, in all its components, shall be designed to operate without failures in high-load, high-concurrency environments. This is a critical requirement for all technical decisions.
 
+### Requirement 8: Caching Layer
+
+**Description:** The system shall include an optional caching layer between Business and Data layers.
+
+**Cache Layer Responsibilities:**
+- Cache user reaction states for fast lookups
+- Cache entity reaction counts to reduce database load
+- Implement cache invalidation on write operations
+- Provide thread-safe cache operations
+
+**Cache Configuration:**
+- Cache is optional (can be disabled)
+- TTL (time-to-live) configurable per entry type
+- Maximum size with LRU eviction
+- Metrics for hit/miss rates
+
+**Integration:**
+- Business Layer checks cache before Data Layer
+- Cache misses trigger Data Layer queries
+- Write operations invalidate relevant cache entries
+- Cache is transparent to API consumers
+
+**Rationale:**
+- Improves read performance for frequently accessed data
+- Reduces database load in high-traffic scenarios
+- Supports high concurrency requirements
+
 **Concurrency Requirements:**
 - **Lock-Free Operations:** Prefer lock-free algorithms over mutex-based synchronization where possible
 - **Minimal Lock Scope:** When locks are necessary, they must be held for the shortest possible duration
@@ -177,6 +204,8 @@ The system shall be organized into distinct architectural layers with clear sepa
 
 6. **High Concurrency Required:** All design decisions must prioritize concurrent safety; global locks and long-held locks are prohibited.
 
+7. **Caching Layer:** Optional cache layer improves read performance but adds complexity to consistency management.
+
 ## Layer Communication Flow
 
 ```
@@ -188,6 +217,14 @@ External Consumer
 | - Input validation
 | - Business logic
 | - Transaction coordination
++------------------+
+       |
+       v
++------------------+
+| Cache Layer      | (Optional - improves read performance)
+| - Reaction state cache
+| - Entity counts cache
+| - Cache invalidation
 +------------------+
        |
        v
@@ -213,7 +250,8 @@ External Consumer
 | Date | Change | Description |
 |------|--------|-------------|
 | 2026-03-21 | Initial | First version of architecture specification |
-| 2026-03-21 | Update | Added Requirement 7 (High Concurrency and Load Support) as critical design constraint
+| 2026-03-21 | Update | Added Requirement 7 (High Concurrency and Load Support) as critical design constraint |
+| 2026-03-21 | Update | Added Requirement 8 (Caching Layer) to architecture |
 
 ## Acceptance Criteria
 
@@ -231,3 +269,6 @@ External Consumer
 12. **AC12:** Lock-free or minimal-lock patterns are used for high-concurrency paths
 13. **AC13:** Connection pooling is properly implemented and configured
 14. **AC14:** Race condition testing passes under high concurrent load
+15. **AC15:** Cache layer is optional and can be disabled
+16. **AC16:** Cache invalidation occurs on write operations
+17. **AC17:** Cache is thread-safe for concurrent access

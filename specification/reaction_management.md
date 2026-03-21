@@ -4,6 +4,33 @@
 
 The system shall provide core reaction management capabilities, allowing users to express sentiment (positive or negative) toward any entity in the system. The module supports four primary operations: LIKE, UNLIKE, DISLIKE, and UNDISLIKE, with an extensible design for future reaction types.
 
+## Module Scope and Boundaries
+
+### Exclusive Responsibility: User Reactions
+
+This module handles **EXCLUSIVELY** user reactions. It is responsible for recording, managing, and querying which reactions (LIKE/DISLIKE) users have expressed toward entities.
+
+### Out of Scope
+
+The following concerns are **NOT** the responsibility of this module:
+
+1. **Authentication:** User identity verification is handled by the consuming application. This module receives user identifiers as opaque strings and does not validate their authenticity.
+
+2. **Reaction Target Management:** The creation, validation, or lifecycle of reaction targets (entities being reacted to) is outside this module's scope. The module accepts entity_type and entity_id as opaque identifiers without validating their existence or managing their state.
+
+3. **Authorization:** Access control policies (e.g., "user A cannot like entity B") are enforced by the consuming application before calling this module.
+
+4. **Entity Metadata:** Any metadata about the entities being reacted to (titles, descriptions, ownership) is not stored or managed by this module.
+
+### Module Responsibilities
+
+This module provides:
+- Mechanisms to persist user reactions to storage
+- Mechanisms to query reactions (individual and aggregated)
+- Atomic operations ensuring data consistency
+- Audit logging of all reaction operations
+- Caching capabilities for improved read performance
+
 ## Core Concepts
 
 ### Reaction Target
@@ -146,17 +173,19 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 
 ## Constraints and Limitations
 
-1. **Mutual Exclusivity:** A user may have at most one active reaction (LIKE or DISLIKE) per Reaction Target at any given time. Registering a new reaction of a different type automatically removes any existing reaction.
+1. **Scope Limitation:** This module exclusively handles user reactions. Authentication, authorization, and reaction target management are the responsibility of the consuming application.
 
-2. **Idempotency of LIKE/DISLIKE:** LIKE and DISLIKE operations are idempotent. If a LIKE already exists for a User Reaction, attempting another LIKE shall return an error indicating a duplicate reaction. Similarly for DISLIKE. No state change shall occur on duplicate attempts.
+2. **Mutual Exclusivity:** A user may have at most one active reaction (LIKE or DISLIKE) per Reaction Target at any given time. Registering a new reaction of a different type automatically removes any existing reaction.
 
-3. **Strict Removal:** UNLIKE shall only succeed if a LIKE exists for the User Reaction; UNDISLIKE shall only succeed if a DISLIKE exists. Attempting to remove a non-existent reaction shall result in an error.
+3. **Idempotency of LIKE/DISLIKE:** LIKE and DISLIKE operations are idempotent. If a LIKE already exists for a User Reaction, attempting another LIKE shall return an error indicating a duplicate reaction. Similarly for DISLIKE. No state change shall occur on duplicate attempts.
 
-4. **Atomicity:** Operations that modify both User Reactions and Reaction Target counts shall be atomic. Partial failures shall not leave the system in an inconsistent state.
+4. **Strict Removal:** UNLIKE shall only succeed if a LIKE exists for the User Reaction; UNDISLIKE shall only succeed if a DISLIKE exists. Attempting to remove a non-existent reaction shall result in an error.
 
-5. **Validation:** All inputs shall be validated before processing. Invalid inputs shall result in immediate rejection with clear error indicators.
+5. **Atomicity:** Operations that modify both User Reactions and Reaction Target counts shall be atomic. Partial failures shall not leave the system in an inconsistent state.
 
-6. **Reaction Target Isolation:** Reactions on different Reaction Targets are completely independent. Operations on one Reaction Target never affect another.
+6. **Validation:** All inputs shall be validated before processing. Invalid inputs shall result in immediate rejection with clear error indicators.
+
+7. **Reaction Target Isolation:** Reactions on different Reaction Targets are completely independent. Operations on one Reaction Target never affect another.
 
 ## Relationships with Other Functional Blocks
 
@@ -173,6 +202,7 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 | 2026-03-21 | Initial | First version of reaction management specification |
 | 2026-03-21 | Update | Clarified UNLIKE/UNDISLIKE require existing reactions; removed idempotency for removals |
 | 2026-03-21 | Update | Introduced Reaction Target and User Reaction concepts; added idempotency for LIKE/DISLIKE operations |
+| 2026-03-21 | Update | Added Module Scope and Boundaries section clarifying exclusive responsibility for user reactions and out-of-scope concerns |
 
 ## Acceptance Criteria
 
