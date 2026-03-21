@@ -96,71 +96,76 @@ Do you authorize this operation? (yes/no)
 
 ### 5. Commit Message Standards (MANDATORY)
 
-**TODAS as mensagens SEM EXCEPÇÃO devem incluir:**
-- **O que foi alterado**: Descrição clara da modificação
-- **O motivo**: Razão de negócio/técnica para a alteração
+**ALL messages WITHOUT EXCEPTION must be:**
+- Written in **ENGLISH** - clear, simple, and technically descriptive
+- Include **Functional Summary** (the WHY): Business/technical reason for the change
+- Include **Technical Summary** (the WHAT): Clear description of the modification
 
-**Formato obrigatório:**
+**Mandatory Format:**
 ```
-tipo(escopo): o que foi feito
+type(scope): brief technical summary
 
-Corpo explicando o motivo da alteração, contexto e justificação.
-Incluir referências a issues ou tickets quando aplicável.
+Technical details explaining what was changed and how.
+Functional context explaining why this change was needed.
+
+Refs: #123
 ```
 
-**Exemplos corretos:**
+**Correct Examples:**
 ```
-feat(auth): implementar validação JWT
+feat(auth): implement JWT token validation middleware
 
-Adiciona middleware para validar tokens JWT em rotas protegidas.
-Motivo: Requisito de segurança para proteger endpoints sensíveis.
-Inclui mecanismo de refresh para sessões longas.
+Adds JWT middleware to verify tokens on protected routes.
+Configures 15-minute expiration with refresh mechanism for long sessions.
+Reason: Security requirement to protect sensitive endpoints in production.
 
 Refs: #123
 ```
 
 ```
-fix(database): corrigir timeout de conexão
+fix(database): increase connection timeout from 5s to 30s
 
-Aumenta timeout de 5s para 30s para evitar falhas em queries lentas.
-Motivo: Reports de erros em produção durante picos de tráfego.
+Extends database connection timeout to handle slow queries during peak traffic.
+Adds retry logic with exponential backoff for failed connections.
+Reason: Production errors reported during traffic spikes causing connection failures.
 
 Closes: #456
 ```
 
-**NUNCA enviar mensagens genéricas como:**
+**NEVER send generic messages like:**
 - "update files"
 - "fix bug"
 - "changes"
 - "WIP"
-- Sem descrição do motivo
+- Without WHY (functional) explanation
+- Without WHAT (technical) description
 
 ### 6. No AI Attribution (MANDATORY)
 
-**NENHUMA interação deve reflectir que foi usado o agente Claude:**
+**NO interaction should reflect that Claude agent was used:**
 
-**PROIBIDO incluir em qualquer mensagem:**
+**FORBIDDEN to include in any message:**
 - `Co-Authored-By:`
 - `Claude Opus 4.6`
 - `<noreply@anthropic.com>`
 - `Generated with Claude`
 - `Claude Code`
-- Qualquer referência à Anthropic ou a agentes de IA
+- Any reference to Anthropic or AI agents
 
-**Exemplo de commit message CORRETA:**
+**Example of CORRECT commit message:**
 ```
-feat(api): adicionar endpoint de autenticação
+feat(api): add authentication endpoint
 
-Implementa endpoint POST /auth/login para validar credenciais.
-Motivo: Requisito do sprint para autenticação de utilizadores.
-Inclui validação de input e geração de tokens JWT.
+Implements POST /auth/login endpoint to validate user credentials.
+Includes input validation and JWT token generation.
+Reason: Sprint requirement for user authentication feature.
 ```
 
-**Exemplo de commit message INCORRETA:**
+**Example of INCORRECT commit message:**
 ```
-feat(api): adicionar endpoint de autenticação
+feat(api): add authentication endpoint
 
-Implementa endpoint POST /auth/login para validar credenciais.
+Implements POST /auth/login endpoint to validate user credentials.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
@@ -349,11 +354,11 @@ Follow **Conventional Commits** specification:
 
 **Example:**
 ```
-feat(auth): implement JWT token validation
+feat(auth): implement JWT token validation middleware
 
-Adiciona middleware para verificar tokens JWT em rotas protegidas.
-Motivo: Requisito de segurança para endpoints sensíveis.
-Inclui mecanismo de refresh para sessões longas.
+Adds JWT middleware to verify tokens on protected routes.
+Configures 15-minute expiration with refresh mechanism for long sessions.
+Reason: Security requirement to protect sensitive endpoints in production.
 
 Closes #123
 ```
@@ -576,14 +581,16 @@ Modified files:
 - go.mod (added jwt dependency)
 
 Enter commit message following conventional format:
-tipo(escopo): o que foi feito
+type(scope): technical summary
 
-Corpo: explicação do motivo e contexto
+Body: technical details explaining what was changed
+Body: functional reason explaining why it was needed
 
 Suggested: feat(auth): implement JWT middleware for token validation
 
-Motivo: Requisito de segurança sprint 3 para proteger rotas sensíveis.
-Inclui mecanismo de refresh para sessões longas.
+Adds JWT middleware with 15-minute expiration to verify tokens on protected routes.
+Implements refresh mechanism for long-lived user sessions.
+Reason: Security requirement sprint 3 to protect sensitive API endpoints.
 
 Is this message acceptable? (yes/edit/abort)
 ```
