@@ -101,19 +101,34 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 
 ### Requirement 5: Query Capabilities
 
-**Description:** The system shall support efficient querying of User Reaction data.
+**Description:** The system shall support efficient querying of User Reaction data with consolidated results.
 
 **Required Queries:**
 - Retrieve User Reaction by (user_id, entity_type, entity_id)
-- Retrieve all User Reactions for a user with optional filters
+- Retrieve all User Reactions for a user with optional filters (liked entities, disliked entities)
 - Retrieve all User Reactions for a Reaction Target
 - Retrieve aggregated counts by Reaction Target (total likes, total dislikes)
 - Retrieve aggregated counts by user
+- **Consolidated Entity Query:** Retrieve counts AND recent users who reacted in single operation
+  - Returns: total likes, total dislikes, list of recent users who liked, list of recent users who disliked
+  - Single database invocation to get complete reaction picture
+
+**Efficiency Requirements:**
+- **Minimize Round Trips:** All query operations shall fetch required data in minimum database calls
+- **Single Invocation:** Consolidated queries (counts + users) shall use single database invocation where possible
+  - SQL: Use JOINs or subqueries to fetch counts and users in one query
+  - MongoDB: Use aggregation pipelines with $facet
+  - Redis: Use Lua scripts or pipelining for multi-key operations
+  - Cassandra: Design tables to support query patterns; denormalize where necessary
+- **Batch Operations:** Support fetching multiple entities/users in single call
+- **Projection:** Only request fields needed for the specific query
+- **No N+1:** Query implementations shall avoid N+1 query patterns
 
 **Performance Requirements:**
 - Queries by (user_id, entity_type, entity_id) shall use indexed lookups
 - Reaction Target count queries shall be optimized (materialized or cached)
 - Pagination shall be supported for large result sets
+- Consolidated queries shall complete within same time budget as simple count queries
 
 ### Requirement 6: Migration Support
 
@@ -265,6 +280,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 | 2026-03-21 | Update | Added note about independent audit storage capability |
 | 2026-03-21 | Update | Added MongoDB and Cassandra support; added Requirement 8 (Performance Optimization) |
 | 2026-03-21 | Update | Added Requirement 9 (Redis Storage Support) and Requirement 10 (In-Memory Storage Support) |
+| 2026-03-21 | Update | Added Requirement 5 efficiency requirements (minimize round trips, single invocation for consolidated queries) |
 
 ## Acceptance Criteria
 
@@ -290,3 +306,6 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 20. **AC20:** Query execution times are logged and monitored
 21. **AC21:** In-Memory storage implements the same Data Layer interface as persistent backends
 22. **AC22:** Redis supports pipelining for batch operations
+23. **AC23:** Consolidated queries (counts + users) use single database invocation where possible
+24. **AC24:** No N+1 query patterns in query implementations
+25. **AC25:** Queries for user likes/dislikes return complete lists with pagination support

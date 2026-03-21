@@ -62,6 +62,9 @@ Audit logging defaults to NullAuditor (no-op) implementation. Persistent auditin
 ### Security-First Policy
 Security is a fundamental design principle. Secure defaults, defense in depth, fail secure. See [security_policies.md](security_policies.md) for details.
 
+### Consolidated Queries
+Queries that return complete reaction data including counts and recent users in a single operation. Minimizes database round trips by fetching all required data in one invocation. See [api_interface.md](api_interface.md) and [data_persistence.md](data_persistence.md) for details.
+
 ## Navigation
 
 ### For New Features
@@ -99,6 +102,8 @@ Security is a fundamental design principle. Secure defaults, defense in depth, f
 | 2026-03-21 | architecture | Update | Added Requirement 8 (Caching Layer) |
 | 2026-03-21 | audit_logging | Update | Modified Requirement 1 to Configurable Audit Logging with NullAuditor as default |
 | 2026-03-21 | data_persistence | Update | Added Requirement 9 (Redis Storage Support) and Requirement 10 (In-Memory Storage Support) |
+| 2026-03-21 | api_interface | Update | Added GetUserLikes, GetUserDislikes, GetEntityReactionsWithUsers operations; added consolidated queries |
+| 2026-03-21 | data_persistence | Update | Added efficiency requirements to Requirement 5 (minimize round trips, single invocation) |
 
 ---
 

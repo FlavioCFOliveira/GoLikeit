@@ -21,6 +21,23 @@ The system shall expose a public API that allows consuming applications to integ
 - GetEntityCounts(ctx, entity_type, entity_id) (ReactionCounts, error)
 - GetUserReactions(ctx, user_id, options) ([]Reaction, error)
 - GetEntityReactions(ctx, entity_type, entity_id, options) ([]Reaction, error)
+- GetUserLikes(ctx, user_id, options) ([]EntityTarget, error) - Returns all entities liked by user
+- GetUserDislikes(ctx, user_id, options) ([]EntityTarget, error) - Returns all entities disliked by user
+- GetEntityReactionsWithUsers(ctx, entity_type, entity_id, options) (EntityReactionDetail, error) - Consolidated view with counts and recent users
+
+**Consolidated Query Operations:**
+- **EntityReactionDetail** provides:
+  - Total likes count
+  - Total dislikes count
+  - Last N users who liked (configurable N, default 10)
+  - Last N users who disliked (configurable N, default 10)
+  - Timestamps of most recent reactions
+
+**Requirements:**
+- All query operations return complete, consolidated data in a single call
+- No separate calls required to get counts and user lists
+- Pagination supported for large user lists
+- Options parameter allows configuring N (number of recent users to return)
 
 **Bulk Operations:**
 - GetUserReactionsBulk(ctx, user_id, entityTargets) (map[EntityTarget]ReactionState, error)
@@ -294,6 +311,7 @@ state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
 | 2026-03-21 | Update | Added duplicate reaction error types for idempotency; updated examples to reflect Reaction Target and User Reaction concepts |
 | 2026-03-21 | Update | Added Requirement 8 (Simple Configuration API) with fluent interface pattern |
 | 2026-03-21 | Update | Added Requirement 9 (Caching Layer) and Requirement 10 (Bulk Operations) |
+| 2026-03-21 | Update | Added GetUserLikes, GetUserDislikes, GetEntityReactionsWithUsers operations; added consolidated query operations with counts and recent users |
 
 ## Acceptance Criteria
 
@@ -315,3 +333,6 @@ state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
 16. **AC16:** Cache invalidation occurs on reaction state changes
 17. **AC17:** Bulk operations minimize database round trips
 18. **AC18:** Bulk operations enforce maximum batch size limits
+19. **AC19:** GetUserLikes and GetUserDislikes return all entities with user reactions
+20. **AC20:** GetEntityReactionsWithUsers returns consolidated data (counts + recent users) in single call
+21. **AC21:** Recent users list is configurable (N users, default 10)
