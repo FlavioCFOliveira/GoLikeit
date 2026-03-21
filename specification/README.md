@@ -65,6 +65,12 @@ Security is a fundamental design principle. Secure defaults, defense in depth, f
 ### Consolidated Queries
 Queries that return complete reaction data including counts and recent users in a single operation. Minimizes database round trips by fetching all required data in one invocation. See [api_interface.md](api_interface.md) and [data_persistence.md](data_persistence.md) for details.
 
+### Pagination
+Consistent pagination mechanism using PaginatedResult[T] for queries potentially returning more than 50 records. Default 20 items per page, maximum 100. See [api_interface.md](api_interface.md) for details.
+
+### Fast Reaction Check
+Ultra-fast boolean operations (HasUserLiked, HasUserDisliked) optimized for quick UI feedback. Single key lookup, cache-first, <10ms response time. See [api_interface.md](api_interface.md) for details.
+
 ## Navigation
 
 ### For New Features
@@ -104,6 +110,8 @@ Queries that return complete reaction data including counts and recent users in 
 | 2026-03-21 | data_persistence | Update | Added Requirement 9 (Redis Storage Support) and Requirement 10 (In-Memory Storage Support) |
 | 2026-03-21 | api_interface | Update | Added GetUserLikes, GetUserDislikes, GetEntityReactionsWithUsers operations; added consolidated queries |
 | 2026-03-21 | data_persistence | Update | Added efficiency requirements to Requirement 5 (minimize round trips, single invocation) |
+| 2026-03-21 | api_interface | Update | Added Requirement 11 (Pagination Support) and Requirement 12 (Fast Reaction Check Operations) |
+| 2026-03-21 | data_persistence | Update | Added pagination requirements and fast check operation requirements to Requirement 5 |
 
 ---
 

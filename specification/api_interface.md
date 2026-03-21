@@ -19,11 +19,13 @@ The system shall expose a public API that allows consuming applications to integ
 **Query Operations:**
 - GetUserReaction(ctx, user_id, entity_type, entity_id) (ReactionState, error)
 - GetEntityCounts(ctx, entity_type, entity_id) (ReactionCounts, error)
-- GetUserReactions(ctx, user_id, options) ([]Reaction, error)
-- GetEntityReactions(ctx, entity_type, entity_id, options) ([]Reaction, error)
-- GetUserLikes(ctx, user_id, options) ([]EntityTarget, error) - Returns all entities liked by user
-- GetUserDislikes(ctx, user_id, options) ([]EntityTarget, error) - Returns all entities disliked by user
+- GetUserReactions(ctx, user_id, pagination) (PaginatedResult[Reaction], error)
+- GetEntityReactions(ctx, entity_type, entity_id, pagination) (PaginatedResult[Reaction], error)
+- GetUserLikes(ctx, user_id, pagination) (PaginatedResult[EntityTarget], error) - Returns paginated entities liked by user
+- GetUserDislikes(ctx, user_id, pagination) (PaginatedResult[EntityTarget], error) - Returns paginated entities disliked by user
 - GetEntityReactionsWithUsers(ctx, entity_type, entity_id, options) (EntityReactionDetail, error) - Consolidated view with counts and recent users
+- **HasUserLiked(ctx, user_id, entity_type, entity_id) (bool, error)** - Ultra-fast check if user liked target
+- **HasUserDisliked(ctx, user_id, entity_type, entity_id) (bool, error)** - Ultra-fast check if user disliked target
 
 **Consolidated Query Operations:**
 - **EntityReactionDetail** provides:
@@ -36,7 +38,7 @@ The system shall expose a public API that allows consuming applications to integ
 **Requirements:**
 - All query operations return complete, consolidated data in a single call
 - No separate calls required to get counts and user lists
-- Pagination supported for large user lists
+- **Pagination required** for queries that may return more than 50 records
 - Options parameter allows configuring N (number of recent users to return)
 
 **Bulk Operations:**
@@ -240,6 +242,88 @@ client, err := golikeit.New(
 - Partial failures shall return successful results with error indicators
 - Bulk operations shall leverage cache when available
 
+### Requirement 11: Pagination Support
+
+**Description:** All query operations that may return more than 50 records shall use a consistent pagination mechanism.
+
+**Pagination Model:**
+```go
+type Pagination struct {
+    Page    int // 1-based page number
+    PerPage int // Items per page (max 100)
+}
+
+type PaginatedResult[T] struct {
+    Items      []T   // Current page items
+    Total      int64 // Total items across all pages
+    Page       int   // Current page number
+    PerPage    int   // Items per page
+    TotalPages int   // Total number of pages
+    HasNext    bool  // Whether there is a next page
+    HasPrev    bool  // Whether there is a previous page
+}
+```
+
+**Requirements:**
+- **Threshold:** Pagination is mandatory for queries potentially returning >50 records
+- **Default Page Size:** 20 items per page (configurable)
+- **Maximum Page Size:** 100 items per page (enforced)
+- **Page Numbering:** 1-based (first page is 1, not 0)
+- **Consistent Ordering:** Results ordered by timestamp descending (newest first)
+- **Total Count:** Include total item count for UI pagination controls
+- **Cursor Support:** Optional cursor-based pagination for very large datasets (>10,000 items)
+
+**Affected Operations:**
+- GetUserReactions (user's reaction history)
+- GetEntityReactions (all reactions on an entity)
+- GetUserLikes (user's liked entities)
+- GetUserDislikes (user's disliked entities)
+
+**Rationale:**
+- Prevents memory issues with large result sets
+- Provides predictable performance
+- Enables efficient UI pagination
+- Consistent experience across all list queries
+
+### Requirement 12: Fast Reaction Check Operations
+
+**Description:** The API shall provide ultra-fast, efficient methods to check if a user has a specific reaction on a target.
+
+**Fast Check Operations:**
+- **HasUserLiked(ctx, user_id, entity_type, entity_id) (bool, error)**
+  - Returns: true if user has LIKED the target, false otherwise
+  - Optimized for speed; minimal database overhead
+  - Uses cache when available
+  - Single key lookup in most backends
+
+- **HasUserDisliked(ctx, user_id, entity_type, entity_id) (bool, error)**
+  - Returns: true if user has DISLIKED the target, false otherwise
+  - Same optimization as HasUserLiked
+
+**Performance Requirements:**
+- Response time: <5ms (p95) when cached
+- Response time: <10ms (p95) when not cached
+- Single database lookup (no joins, no aggregations)
+- Returns boolean only (no additional data fetched)
+
+**Implementation Strategy:**
+- **Cache-First:** Check in-memory cache before database
+- **Key Design:** Use composite key (user_id:entity_type:entity_id) for O(1) lookups
+- **Database:** Use primary key or covering index lookup
+- **No Object Mapping:** Raw database value to boolean, no struct instantiation
+
+**Use Cases:**
+- UI button state ("already liked" indicator)
+- Permission checks ("can like" validation)
+- Batch processing requiring quick state verification
+- Real-time features requiring fast feedback
+
+**Rationale:**
+- UI often needs to check if current user liked content (for heart icon state)
+- GetUserReaction returns full state; HasUserLiked is optimized boolean check
+- Critical for high-traffic scenarios with many concurrent users
+- Reduces unnecessary data transfer
+
 ## Constraints and Limitations
 
 1. **Library API Only:** The system provides a Go library API, not HTTP/gRPC endpoints. Network APIs are the responsibility of the consuming application.
@@ -312,6 +396,7 @@ state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
 | 2026-03-21 | Update | Added Requirement 8 (Simple Configuration API) with fluent interface pattern |
 | 2026-03-21 | Update | Added Requirement 9 (Caching Layer) and Requirement 10 (Bulk Operations) |
 | 2026-03-21 | Update | Added GetUserLikes, GetUserDislikes, GetEntityReactionsWithUsers operations; added consolidated query operations with counts and recent users |
+| 2026-03-21 | Update | Added Requirement 11 (Pagination Support) and Requirement 12 (Fast Reaction Check Operations) |
 
 ## Acceptance Criteria
 
@@ -333,6 +418,10 @@ state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
 16. **AC16:** Cache invalidation occurs on reaction state changes
 17. **AC17:** Bulk operations minimize database round trips
 18. **AC18:** Bulk operations enforce maximum batch size limits
-19. **AC19:** GetUserLikes and GetUserDislikes return all entities with user reactions
+19. **AC19:** GetUserLikes and GetUserDislikes return paginated entities with user reactions
 20. **AC20:** GetEntityReactionsWithUsers returns consolidated data (counts + recent users) in single call
 21. **AC21:** Recent users list is configurable (N users, default 10)
+22. **AC22:** Pagination is used for queries potentially returning >50 records
+23. **AC23:** Pagination uses consistent model (PaginatedResult[T]) across all operations
+24. **AC24:** HasUserLiked and HasUserDisliked return boolean in <10ms
+25. **AC25:** Fast check operations use single key lookup optimization

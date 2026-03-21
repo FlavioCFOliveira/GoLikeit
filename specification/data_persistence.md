@@ -124,6 +124,24 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - **Projection:** Only request fields needed for the specific query
 - **No N+1:** Query implementations shall avoid N+1 query patterns
 
+**Pagination Requirements:**
+- **Consistent Pagination:** All data layer implementations use same pagination model
+- **Page Size:** Default 20, maximum 100 items per page
+- **Offset/Limit:** Use OFFSET/LIMIT for SQL; skip/limit for MongoDB; range queries for Cassandra
+- **Cursor Support:** Optional cursor-based pagination for Redis and high-volume scenarios
+- **Total Count:** Return total item count for pagination UI
+- **Threshold:** Automatic pagination for queries returning >50 records
+
+**Fast Check Operations:**
+- **HasUserLiked:** Ultra-fast boolean check (single key lookup)
+  - SQL: SELECT EXISTS(SELECT 1 FROM reactions WHERE ...)
+  - Redis: EXISTS reaction:{user_id}:{entity_type}:{entity_id}
+  - MongoDB: Count with limit 1
+  - In-Memory: Map lookup with O(1)
+- **HasUserDisliked:** Same optimizations as HasUserLiked
+- **Performance Target:** <10ms p95 latency
+- **Cache Priority:** Check cache before database for fastest response
+
 **Performance Requirements:**
 - Queries by (user_id, entity_type, entity_id) shall use indexed lookups
 - Reaction Target count queries shall be optimized (materialized or cached)
@@ -281,6 +299,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 | 2026-03-21 | Update | Added MongoDB and Cassandra support; added Requirement 8 (Performance Optimization) |
 | 2026-03-21 | Update | Added Requirement 9 (Redis Storage Support) and Requirement 10 (In-Memory Storage Support) |
 | 2026-03-21 | Update | Added Requirement 5 efficiency requirements (minimize round trips, single invocation for consolidated queries) |
+| 2026-03-21 | Update | Added pagination requirements and fast check operation requirements to Requirement 5 |
 
 ## Acceptance Criteria
 
@@ -308,4 +327,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 22. **AC22:** Redis supports pipelining for batch operations
 23. **AC23:** Consolidated queries (counts + users) use single database invocation where possible
 24. **AC24:** No N+1 query patterns in query implementations
-25. **AC25:** Queries for user likes/dislikes return complete lists with pagination support
+25. **AC25:** Queries for user likes/dislikes use pagination (default 20, max 100)
+26. **AC26:** All data layer implementations use consistent pagination model
+27. **AC27:** HasUserLiked and HasUserDisliked use single key lookup
+28. **AC28:** Fast check operations complete in <10ms p95 latency
