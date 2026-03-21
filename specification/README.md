@@ -18,11 +18,11 @@ User Request → spec-orchestrator → specification/ → go-elite-developer →
 | [reaction_management.md](reaction_management.md) | Core reaction operations with scope boundaries and idempotency | 2026-03-21 |
 | [entity_association.md](entity_association.md) | Reaction Target definition (entity_type + entity_id) | 2026-03-21 |
 | [user_interactions.md](user_interactions.md) | User Reaction definition (user_id + Reaction Target) | 2026-03-21 |
-| [data_persistence.md](data_persistence.md) | Data storage with PostgreSQL, MariaDB, SQLite, MongoDB, Cassandra support | 2026-03-21 |
+| [data_persistence.md](data_persistence.md) | Data storage with PostgreSQL, MariaDB, SQLite, MongoDB, Cassandra, Redis, and In-Memory support | 2026-03-21 |
 | [api_interface.md](api_interface.md) | Public API with caching, bulk operations, and simple configuration | 2026-03-21 |
 | [security_policies.md](security_policies.md) | Security-first policy with mandatory immutable audit logging | 2026-03-21 |
 | [performance_requirements.md](performance_requirements.md) | Performance expectations and scalability | 2026-03-21 |
-| [audit_logging.md](audit_logging.md) | Mandatory audit logging with independent storage, insert/get only operations | 2026-03-21 |
+| [audit_logging.md](audit_logging.md) | Configurable audit logging with NullAuditor default, independent storage, insert/get only | 2026-03-21 |
 
 ## Core Concepts Glossary
 
@@ -54,7 +54,10 @@ Optional in-process caching layer improves read performance and reduces database
 API supports bulk operations for efficient batch processing: GetUserReactionsBulk, GetEntityCountsBulk, GetMultipleUserReactions. See [api_interface.md](api_interface.md) for details.
 
 ### Multi-Database Support
-Supports PostgreSQL, MariaDB, SQLite, MongoDB, and Cassandra with database-specific optimizations. See [data_persistence.md](data_persistence.md) for details.
+Supports PostgreSQL, MariaDB, SQLite, MongoDB, Cassandra, Redis, and In-Memory with database-specific optimizations. See [data_persistence.md](data_persistence.md) for details.
+
+### NullAuditor Default
+Audit logging defaults to NullAuditor (no-op) implementation. Persistent auditing is opt-in via configuration. See [audit_logging.md](audit_logging.md) for details.
 
 ### Security-First Policy
 Security is a fundamental design principle. Secure defaults, defense in depth, fail secure. See [security_policies.md](security_policies.md) for details.
@@ -94,6 +97,8 @@ Security is a fundamental design principle. Secure defaults, defense in depth, f
 | 2026-03-21 | api_interface | Update | Added Requirement 9 (Caching Layer) and Requirement 10 (Bulk Operations) |
 | 2026-03-21 | security_policies | Update | Added Security-First Policy section |
 | 2026-03-21 | architecture | Update | Added Requirement 8 (Caching Layer) |
+| 2026-03-21 | audit_logging | Update | Modified Requirement 1 to Configurable Audit Logging with NullAuditor as default |
+| 2026-03-21 | data_persistence | Update | Added Requirement 9 (Redis Storage Support) and Requirement 10 (In-Memory Storage Support) |
 
 ---
 

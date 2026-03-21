@@ -6,20 +6,31 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 
 ## Functional Requirements
 
-### Requirement 1: Mandatory Audit Logging
+### Requirement 1: Configurable Audit Logging
 
-**Description:** The system shall maintain an audit log as a mandatory feature, not optional.
+**Description:** The system shall support configurable audit logging with a no-op implementation as default.
 
 **Requirements:**
-- Every reaction operation shall be recorded in the audit log
-- Audit log entries shall be persisted to the database
-- Audit logging cannot be disabled
-- Audit log entries are append-only and immutable
+- Audit logging is configurable; consuming application chooses the implementation
+- **NullAuditor:** A no-op (null object) implementation is provided as default
+  - NullAuditor accepts audit entries but performs no persistence
+  - NullAuditor has zero overhead and no external dependencies
+  - NullAuditor is suitable when audit logging is not required
+- **Persistent Auditor:** Full audit logging implementation persists to configured storage
+  - Every reaction operation is recorded
+  - Audit log entries are append-only and immutable
+- Audit implementation is selected during module initialization
 
 **Behavior:**
-- The audit log is always active
-- Failed operations may still be logged (with error indication)
-- Audit logging occurs as part of the transaction (atomic with the operation)
+- By default, NullAuditor is used (no audit output)
+- Consuming application must explicitly configure persistent auditing if desired
+- Failed operations may still be logged with error indication (when using persistent auditor)
+- Audit logging occurs as part of the transaction (atomic with the operation) when persistent
+
+**Rationale:**
+- Zero-overhead default for applications that do not require auditing
+- No breaking changes when upgrading from versions without auditing
+- Consuming application explicitly opts into audit functionality
 
 ### Requirement 2: Log Entry Content
 
@@ -164,6 +175,7 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 |------|--------|-------------|
 | 2026-03-21 | Initial | First version of audit logging specification |
 | 2026-03-21 | Update | Added Requirement 7 (Audit Operations Restriction) and Requirement 8 (Independent Storage Layer) |
+| 2026-03-21 | Update | Modified Requirement 1 to Configurable Audit Logging with NullAuditor as default |
 
 ## Acceptance Criteria
 
@@ -182,3 +194,6 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 13. **AC13:** The audit package exposes only Insert and Get operations; no Delete or Update methods exist
 14. **AC14:** Audit storage can be configured independently from reaction storage with separate connection parameters
 15. **AC15:** Audit storage failures do not impact reaction operations (decoupled storage)
+16. **AC16:** NullAuditor is available as default no-op implementation
+17. **AC17:** Consuming application can configure persistent auditing explicitly
+18. **AC18:** Switching between NullAuditor and persistent auditor requires no code changes

@@ -8,7 +8,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 
 ### Requirement 1: Multi-Database Support
 
-**Description:** The system shall support PostgreSQL, MariaDB, SQLite, MongoDB, and Cassandra as storage backends.
+**Description:** The system shall support PostgreSQL, MariaDB, SQLite, MongoDB, Cassandra, Redis, and In-Memory as storage backends.
 
 **Supported Backends:**
 - **PostgreSQL:** Versions 12 and above
@@ -16,12 +16,15 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - **SQLite:** Version 3.35.0 and above (with WAL mode support)
 - **MongoDB:** Versions 4.4 and above
 - **Cassandra:** Versions 3.11 and above (CQL compatible)
+- **Redis:** Versions 6.0 and above (with RedisJSON module recommended)
+- **In-Memory:** Pure in-memory storage (no persistence, data lost on restart)
 
 **Requirements:**
 - The system shall detect or be configured with the target database type
 - Database-specific optimizations shall be applied for maximum performance
 - Behavior shall remain consistent across all supported backends
 - Connection pooling shall be supported where applicable
+- In-Memory storage is suitable for development, testing, or ephemeral data
 
 **Database-Specific Optimizations:**
 - **PostgreSQL:** Use prepared statements, proper index types, connection pooling with pgx
@@ -29,6 +32,8 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - **SQLite:** Use WAL mode, appropriate cache size, single-writer optimizations
 - **MongoDB:** Use compound indexes, aggregation pipelines for counts, connection pooling
 - **Cassandra:** Use appropriate replication factor, partition key design, prepared statements, batch operations where applicable
+- **Redis:** Use hash data structures for reactions, sets for entity counts, pipelining for batch operations
+- **In-Memory:** Use Go maps with RWMutex for thread-safe access; periodic snapshots optional
 
 ### Requirement 2: Data Integrity
 
@@ -160,6 +165,66 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - Query execution time metrics
 - Connection pool utilization metrics
 
+### Requirement 9: Redis Storage Support
+
+**Description:** The system shall support Redis as a storage backend for high-performance, low-latency reaction storage.
+
+**Redis Data Model:**
+- **User Reactions:** Stored as hash entries with key pattern `reaction:{user_id}:{entity_type}:{entity_id}`
+- **Entity Counts:** Stored as hash with key `counts:{entity_type}:{entity_id}` containing like/dislike counters
+- **User Reaction Index:** Set per user containing all entities reacted to for quick lookup
+- **Entity Reaction Index:** Set per entity containing all users who reacted for aggregation
+
+**Redis Operations:**
+- **Pipelining:** Batch operations use pipelining to minimize round trips
+- **Transactions:** Multi/Exec for atomic counter updates
+- **Lua Scripts:** Server-side scripts for complex atomic operations (e.g., swap LIKE to DISLIKE)
+- **TTL Support:** Optional expiration for temporary reactions
+
+**Requirements:**
+- Redis connection pooling via go-redis or similar client
+- Support for Redis Cluster and Redis Sentinel configurations
+- Automatic reconnection with exponential backoff
+- Configurable key prefix for namespace isolation
+
+**Redis Limitations:**
+- Memory-based storage requires sufficient RAM for dataset
+- Durability depends on Redis persistence configuration (RDB/AOF)
+- Eventual consistency in Redis Cluster mode for some operations
+
+### Requirement 10: In-Memory Storage Support
+
+**Description:** The system shall provide a pure in-memory storage implementation for development, testing, and ephemeral use cases.
+
+**In-Memory Storage Characteristics:**
+- **No Persistence:** Data exists only in process memory; all data is lost on application restart
+- **No External Dependencies:** No database server required; ideal for development and testing
+- **Thread-Safe:** All operations are safe for concurrent access from multiple goroutines
+- **Performance:** Fastest possible read/write performance (no network or disk I/O)
+
+**Use Cases:**
+- Development and local testing without database setup
+- Unit tests requiring isolated, fast storage
+- Ephemeral data that does not require persistence
+- High-performance scenarios where durability is not required
+
+**Data Structures:**
+- **User Reactions:** Stored in Go maps with composite key (user_id + entity_type + entity_id)
+- **Entity Counts:** Maintained in separate counters map with atomic operations
+- **Concurrency:** RWMutex for read-heavy operations; sync.Map optional for high concurrency
+
+**Limitations:**
+- Data is not persisted across application restarts
+- Memory usage is limited by available RAM
+- No replication or backup capabilities
+- Single-node only (no distributed in-memory option)
+
+**Requirements:**
+- In-Memory storage implements the same Data Layer interface as persistent backends
+- Switching between In-Memory and persistent storage requires no code changes (only configuration)
+- Atomic operations are simulated with mutex locks
+- Query capabilities match persistent backends (filtered by user, entity, etc.)
+
 ## Constraints and Limitations
 
 1. **No Automatic Schema Creation in Production:** Production deployments should create schemas through explicit migration commands, not automatic initialization.
@@ -172,11 +237,15 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 
 5. **Cassandra Considerations:** Cassandra prioritizes availability over consistency; design requires careful partition key selection.
 
-6. **No Cross-Database Replication:** The system does not provide built-in replication between different database types.
+6. **Redis Considerations:** Redis is memory-based; durability depends on persistence settings. Cluster mode has eventual consistency for multi-key operations.
 
-7. **No Embedded Cache:** The data persistence layer does not include application-level caching; this is the responsibility of higher layers.
+7. **In-Memory Limitations:** Data is lost on application restart; limited by available RAM; not suitable for production use cases requiring durability.
 
-8. **Independent Audit Storage:** While reaction data uses the configured primary storage, audit logging may be configured to use a separate database. See [audit_logging.md](audit_logging.md) for details.
+8. **No Cross-Database Replication:** The system does not provide built-in replication between different database types.
+
+9. **No Embedded Cache:** The data persistence layer does not include application-level caching; this is the responsibility of higher layers.
+
+10. **Independent Audit Storage:** While reaction data uses the configured primary storage, audit logging may be configured to use a separate database. See [audit_logging.md](audit_logging.md) for details.
 
 ## Relationships with Other Functional Blocks
 
@@ -195,6 +264,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 | 2026-03-21 | Update | Updated data model to reflect User Reaction and Reaction Target concepts; added duplicate detection requirements |
 | 2026-03-21 | Update | Added note about independent audit storage capability |
 | 2026-03-21 | Update | Added MongoDB and Cassandra support; added Requirement 8 (Performance Optimization) |
+| 2026-03-21 | Update | Added Requirement 9 (Redis Storage Support) and Requirement 10 (In-Memory Storage Support) |
 
 ## Acceptance Criteria
 
@@ -203,16 +273,20 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 3. **AC3:** The system supports SQLite 3.35.0+ as a storage backend
 4. **AC4:** The system supports MongoDB 4.4+ as a storage backend
 5. **AC5:** The system supports Cassandra 3.11+ as a storage backend
-6. **AC6:** All User Reaction data includes required fields (id, user_id, entity_type, entity_id, reaction_type, created_at)
-7. **AC7:** The combination of (user_id, entity_type, entity_id) is unique across the system (User Reaction uniqueness)
-8. **AC8:** Creating a User Reaction and updating Reaction Target counts is atomic
-9. **AC9:** Removing a User Reaction and updating Reaction Target counts is atomic
-10. **AC10:** Failed operations do not leave partial data in the database
-11. **AC11:** Queries by (user_id, entity_type, entity_id) use indexed lookups
-12. **AC12:** Schema migrations are versioned and tracked
-13. **AC13:** Migration scripts are provided for all supported databases
-14. **AC14:** Connection pooling is supported for PostgreSQL, MariaDB, MongoDB, and Cassandra
-15. **AC15:** Duplicate LIKE/DISLIKE attempts are detected and rejected with no database changes
-16. **AC16:** All queries use appropriate indexes; no full table scans on hot paths
-17. **AC17:** Prepared statements are used for all repeated queries
-18. **AC18:** Query execution times are logged and monitored
+6. **AC6:** The system supports Redis 6.0+ as a storage backend
+7. **AC7:** The system supports In-Memory storage for development and testing
+8. **AC8:** All User Reaction data includes required fields (id, user_id, entity_type, entity_id, reaction_type, created_at)
+9. **AC9:** The combination of (user_id, entity_type, entity_id) is unique across the system (User Reaction uniqueness)
+10. **AC10:** Creating a User Reaction and updating Reaction Target counts is atomic
+11. **AC11:** Removing a User Reaction and updating Reaction Target counts is atomic
+12. **AC12:** Failed operations do not leave partial data in the database
+13. **AC13:** Queries by (user_id, entity_type, entity_id) use indexed lookups
+14. **AC14:** Schema migrations are versioned and tracked
+15. **AC15:** Migration scripts are provided for all supported databases
+16. **AC16:** Connection pooling is supported for PostgreSQL, MariaDB, MongoDB, Cassandra, and Redis
+17. **AC17:** Duplicate LIKE/DISLIKE attempts are detected and rejected with no database changes
+18. **AC18:** All queries use appropriate indexes; no full table scans on hot paths
+19. **AC19:** Prepared statements are used for all repeated queries
+20. **AC20:** Query execution times are logged and monitored
+21. **AC21:** In-Memory storage implements the same Data Layer interface as persistent backends
+22. **AC22:** Redis supports pipelining for batch operations
