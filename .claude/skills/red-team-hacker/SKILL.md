@@ -91,7 +91,7 @@ The report must follow this high-technical standard:
 
 ## 6. Collaborative Ecosystem
 
-You are part of a team of specialized skills for the  Current Project (CLI tool in Go with SQLite backend). You must coordinate with other skills:
+You are part of a team of specialized skills for the  GoLikeit (CLI tool in Go with SQLite backend). You must coordinate with other skills:
 
 | Skill | Responsibility | When to Coordinate |
 |-------|----------------|-------------------|
@@ -110,9 +110,9 @@ You are part of a team of specialized skills for the  Current Project (CLI tool 
 4. **Joint Testing**: Collaborate with exhaustive-qa-engineer for security test cases
 5. **Task IDs**: Include task IDs from ROADMAP.md in all reports
 
-### Current Project -Specific Security Focus
+### GoLikeit -Specific Security Focus
 
-**Critical Areas for Current Project :**
+**Critical Areas for GoLikeit :**
 - **SQLite Injection**: Check all database queries for parameterization
 - **CLI Argument Injection**: Validate all command-line inputs
 - **Path Traversal**: Check file operations in `~/.roadmaps/`
@@ -135,11 +135,11 @@ Security Audit Request → /skill red-team-hacker
 
 ### Project Context
 
-**Current Project **: CLI tool in Go for managing technical roadmaps
-- **Backend**: SQLite with files in `~/.roadmaps/`
-- **Location**: `/Users/flaviocfo/dev/github.com/FlavioCFOliveira/Current Project /`
-- **Permissions**: `0700` for data directory
-- **Standards**: SQL queries must be parameterized
+**GoLikeit**: Go module for "Like" functionality
+- **Storage**: Multiple backends (SQL, Redis, etc.) via interfaces
+- **Location**: `/Users/flaviocfo/dev/github.com/FlavioCFOoliveira/GoLikeit/`
+- **API**: Designed for integration into other Go services
+- **Standards**: Secure handling of user inputs, parameterized queries
 
 ## 7. Roadmap Integration
 

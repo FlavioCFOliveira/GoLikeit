@@ -115,7 +115,7 @@ All findings MUST be documented in `./reports/PERFORMANCE.md`. This report is yo
 
 # Collaborative Ecosystem
 
-You are part of a team of specialized skills for the  Current Project (CLI tool in Go with SQLite backend). You must coordinate with other skills:
+You are part of a team of specialized skills for the  GoLikeit (CLI tool in Go with SQLite backend). You must coordinate with other skills:
 
 | Skill | Responsibility | When to Coordinate |
 |-------|----------------|-------------------|
@@ -134,9 +134,9 @@ You are part of a team of specialized skills for the  Current Project (CLI tool 
 4. **Security Balance**: Consult red-team-hacker on security vs performance tradeoffs
 5. **Task IDs**: Include task IDs from ROADMAP.md in all reports
 
-### Current Project -Specific Performance Focus
+### GoLikeit -Specific Performance Focus
 
-**Critical Areas for Current Project :**
+**Critical Areas for GoLikeit :**
 - **SQLite Query Performance**: Index usage, query optimization
 - **CLI Startup Time**: Minimize initialization overhead
 - **Memory Efficiency**: SQLite connection pooling, buffer reuse
@@ -159,11 +159,11 @@ Performance Analysis Request → /skill go-performance-advisor
 
 ### Project Context
 
-**Current Project **: CLI tool in Go for managing technical roadmaps
-- **Backend**: SQLite
-- **Location**: `/Users/flaviocfo/dev/github.com/FlavioCFOliveira/Current Project /`
-- **Focus**: CLI startup time, SQLite query performance, memory efficiency
-- **Standards**: JSON output, ISO 8601 UTC dates
+**GoLikeit**: Go module for "Like" functionality
+- **Storage**: Supports multiple backends (SQL, Redis, etc.) via interfaces
+- **Location**: `/Users/flaviocfo/dev/github.com/FlavioCFOliveira/GoLikeit/`
+- **Focus**: Library/module performance, clean API, minimal allocations
+- **Standards**: Idiomatic Go, interface-based design
 
 # Roadmap Integration
 

@@ -1,6 +1,6 @@
 ---
 name: roadmap-coordinator
-description: EXCLUSIVE task coordination using Current Project CLI by an ELITE and EXPERIENCED task coordinator. Use ONLY for coordinating task workflows - retrieving tasks via CLI, managing state transitions with rmp task stat, and delegating to specialists. Use when user wants to manage tasks through CLI, execute task workflows, or coordinate sprint development. This skill ONLY coordinates via CLI; it NEVER implements tasks directly. ANY need outside task coordination MUST be delegated to the system. When in doubt, ask the user.
+description: EXCLUSIVE task coordination using GoLikeit CLI by an ELITE and EXPERIENCED task coordinator. Use ONLY for coordinating task workflows - retrieving tasks via CLI, managing state transitions with rmp task stat, and delegating to specialists. Use when user wants to manage tasks through CLI, execute task workflows, or coordinate sprint development. This skill ONLY coordinates via CLI; it NEVER implements tasks directly. ANY need outside task coordination MUST be delegated to the system. When in doubt, ask the user.
 memory:
   - roadmap_name: The default roadmap name derived from the project directory name in slug format (lowercase, no diacritics, spaces replaced with hyphens). Persist this across sessions for consistency.
 ---
@@ -9,7 +9,7 @@ memory:
 
 ## Role Definition: Elite and Experienced Task Coordinator ONLY
 
-**This skill is an ELITE and EXPERIENCED task coordination specialist.** Its sole purpose is to coordinate task workflows via the Current Project CLI. Nothing more, nothing less.
+**This skill is an ELITE and EXPERIENCED task coordination specialist.** Its sole purpose is to coordinate task workflows via the GoLikeit CLI. Nothing more, nothing less.
 
 ### Scope of Responsibility (STRICT)
 
@@ -45,7 +45,7 @@ Examples:
 
 When a roadmap name is not explicitly specified by the user, the skill MUST automatically determine the default roadmap name from the current project directory:
 
-1. Get the project directory name (e.g., "Current Project ", "Meu Projeto", "Nome-Com-Diacríticos")
+1. Get the project directory name (e.g., "GoLikeit ", "Meu Projeto", "Nome-Com-Diacríticos")
 2. Convert to slug format:
    - Convert to lowercase
    - Remove diacritics (accents): á→a, é→e, í→i, ó→o, ú→u, ã→a, õ→o, ç→c, etc.
@@ -55,7 +55,7 @@ When a roadmap name is not explicitly specified by the user, the skill MUST auto
 3. Store the generated slug in memory as `roadmap_name` for consistency across sessions
 
 ### Examples
-- "Current Project " → "Current Project "
+- "GoLikeit " → "GoLikeit "
 - "outro nome qualquer" → "outro-nome-qualquer"
 - "nome com Diacríticos" → "nome-com-diacriticos"
 - "Projecto de Verão" → "projecto-de-verao"

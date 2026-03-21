@@ -1,7 +1,7 @@
 ---
 name: task-creator
 description: |
-  **ALWAYS use this skill when the user wants to create new tasks OR sprints for the  Current Project.**
+  **ALWAYS use this skill when the user wants to create new tasks OR sprints for the  GoLikeit.**
 
   This skill is triggered when:
   - User asks to "create a task", "add a task", "new task" for the roadmap
@@ -15,10 +15,10 @@ description: |
   **Use this skill even if the user doesn't explicitly say "create task" or "create sprint"** - whenever they describe
   something that needs to be implemented, converted into a structured format for the project.
 
-  This skill creates professional, production-ready tasks and sprints following  Current Project standards.
+  This skill creates professional, production-ready tasks and sprints following  GoLikeit standards.
   It collects ALL required data (title, type, priority, status, description, technical requirements,
   acceptance criteria, specialists, dates for sprints, etc.) and delegates persistence to roadmap-coordinator
-  which uses the Current Project CLI (`rmp task create`, `rmp sprint create`) as the source of truth.
+  which uses the GoLikeit CLI (`rmp task create`, `rmp sprint create`) as the source of truth.
 
   **CRITICAL:** This skill ensures ALL fields required by the CLI are collected before delegating to
   roadmap-coordinator. Never delegate incomplete data.
@@ -28,15 +28,15 @@ description: |
 
 ## Purpose
 
-Create structured, professional tasks for the  Current Project that are added via the Current Project CLI (`rmp task create`). Each task follows the project's established format and includes all necessary information for developers to understand, implement, and validate the work.
+Create structured, professional tasks for the  GoLikeit that are added via the GoLikeit CLI (`rmp task create`). Each task follows the project's established format and includes all necessary information for developers to understand, implement, and validate the work.
 
-**Source of Truth:** The roadmap-coordinator skill and Current Project CLI (`rmp` commands) are the exclusive source of truth for task management. This skill delegates task persistence to the roadmap-coordinator.
+**Source of Truth:** The roadmap-coordinator skill and GoLikeit CLI (`rmp` commands) are the exclusive source of truth for task management. This skill delegates task persistence to the roadmap-coordinator.
 
 ## When to Use
 
 **ALWAYS use this skill when:**
-- User wants to create new tasks for the  Current Project
-- User wants to create new sprints for the  Current Project
+- User wants to create new tasks for the  GoLikeit
+- User wants to create new sprints for the  GoLikeit
 - User describes a feature, improvement, or bug fix that needs formalization
 - User says things like: "create task", "add task", "new task", "preciso de uma tarefa"
 - User says things like: "create sprint", "new sprint", "nova sprint", "start sprint"
@@ -360,7 +360,7 @@ Modify `internal/commands/task.go` in `taskEdit` function:
 ### Ficheiros a Criar
 - `path/to/new/file.go` (purpose)
 
-**Deseja criar esta tarefa no Current Project ?** (sim/não/editar)
+**Deseja criar esta tarefa no GoLikeit ?** (sim/não/editar)
 ```
 
 **Sprint Presentation Format:**
@@ -381,7 +381,7 @@ Modify `internal/commands/task.go` in `taskEdit` function:
 ### Entregáveis Esperados
 [What should be completed]
 
-**Deseja criar esta sprint no Current Project ?** (sim/não/editar)
+**Deseja criar esta sprint no GoLikeit ?** (sim/não/editar)
 ```
 
 #### Step 5: Create via CLI (if confirmed)
@@ -482,7 +482,7 @@ Conduct comprehensive security audit of all database operations:
 - time: "3 days"
 - complexity: "HIGH"
 
-**Deseja criar esta tarefa no Current Project ?**
+**Deseja criar esta tarefa no GoLikeit ?**
 ```
 
 ### Example 2: Feature Task (Complete Data)
@@ -544,7 +544,7 @@ Implement shell autocompletion using Cobra's built-in support:
 - time: "1-2 days"
 - complexity: "LOW"
 
-**Deseja criar esta tarefa no Current Project ?**
+**Deseja criar esta tarefa no GoLikeit ?**
 ```
 
 ### Example 3: Sprint Creation (Complete Data)
@@ -582,7 +582,7 @@ with the existing SQLite database and provide secure token-based authentication.
 - end: "2026-04-05"
 - status: "PLANNED"
 
-**Deseja criar esta sprint no Current Project ?**
+**Deseja criar esta sprint no GoLikeit ?**
 ```
 
 ## Language Guidelines
