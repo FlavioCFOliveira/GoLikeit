@@ -87,8 +87,8 @@ List queries paginate efficiently.
 
 - OFFSET-based pagination with limits
 - Consistent ordering (by timestamp)
-- OFFSET limit: 100,000
-- Page size limit: 1,000
+- OFFSET limit: 100
+- Page size limit: 100
 
 ### Requirement 8: Caching
 

@@ -2,7 +2,7 @@
 name: roadmap-coordinator
 description: EXCLUSIVE task coordination using GoLikeit CLI by an ELITE and EXPERIENCED task coordinator. Use ONLY for coordinating task workflows - retrieving tasks via CLI, managing state transitions with rmp task stat, and delegating to specialists. Use when user wants to manage tasks through CLI, execute task workflows, or coordinate sprint development. This skill ONLY coordinates via CLI; it NEVER implements tasks directly. ANY need outside task coordination MUST be delegated to the system. When in doubt, ask the user.
 memory:
-  - roadmap_name: The default roadmap name derived from the project directory name in slug format (lowercase, no diacritics, spaces replaced with hyphens). Persist this across sessions for consistency.
+  - roadmap_name: "golikeit" - The default roadmap name is ALWAYS "golikeit" for the GoLikeit project. Use this value in ALL rmp CLI commands with the -r flag.
 ---
 
 # Roadmap Coordinator
@@ -41,27 +41,15 @@ Examples:
 
 **NEVER attempt to perform work outside task coordination.**
 
-## Default Roadmap Name (Slug Generation)
+## Default Roadmap Name: "golikeit"
 
-When a roadmap name is not explicitly specified by the user, the skill MUST automatically determine the default roadmap name from the current project directory:
+**The default roadmap name is ALWAYS "golikeit" for this project.**
 
-1. Get the project directory name (e.g., "GoLikeit ", "Meu Projeto", "Nome-Com-Diacríticos")
-2. Convert to slug format:
-   - Convert to lowercase
-   - Remove diacritics (accents): á→a, é→e, í→i, ó→o, ú→u, ã→a, õ→o, ç→c, etc.
-   - Replace spaces and special characters with hyphens
-   - Remove consecutive hyphens
-   - Trim leading/trailing hyphens
-3. Store the generated slug in memory as `roadmap_name` for consistency across sessions
+This value is hardcoded and must be used in ALL CLI commands via the `-r golikeit` flag.
 
-### Examples
-- "GoLikeit " → "GoLikeit "
-- "outro nome qualquer" → "outro-nome-qualquer"
-- "nome com Diacríticos" → "nome-com-diacriticos"
-- "Projecto de Verão" → "projecto-de-verao"
-- "Café com Açúcar" → "cafe-com-acucar"
-
-**Usage**: When the user does not specify `-r <roadmap>` in commands, use the stored `roadmap_name` from memory. If no roadmap name is stored, generate it from the current directory and store it.
+### Usage Rule
+- ALWAYS include `-r golikeit` in every rmp CLI command
+- Example: `rmp task next -r golikeit` instead of `rmp task next`
 
 ## Core Principle: CLI-First Coordination
 
@@ -70,7 +58,7 @@ When a roadmap name is not explicitly specified by the user, the skill MUST auto
 ## Primary Workflow
 
 ```
-rmp task next [N] → Analyze → Delegate to specialist → rmp task stat → Validate → Report
+rmp task next -r golikeit [N] → Analyze → Delegate to specialist → rmp task stat -r golikeit → Validate → Report
 ```
 
 ## CLI Commands (Primary Interface)
@@ -78,47 +66,47 @@ rmp task next [N] → Analyze → Delegate to specialist → rmp task stat → V
 ### Task Management
 ```bash
 # Get next tasks (use this FIRST)
-rmp task next [num]
+rmp task next -r golikeit [num]
 
 # Get task details
-rmp task get -r <roadmap> <id>
+rmp task get -r golikeit <id>
 
 # State transitions (MANDATORY)
-rmp task stat -r <roadmap> <id> <BACKLOG|SPRINT|DOING|TESTING|COMPLETED>
+rmp task stat -r golikeit <id> <BACKLOG|SPRINT|DOING|TESTING|COMPLETED>
 
 # List tasks
-rmp task list [-r <roadmap>] [-s <status>]
+rmp task list -r golikeit [-s <status>]
 ```
 
 ### Sprint Management
 ```bash
-rmp sprint list -r <roadmap>
-rmp sprint show -r <roadmap> <id>
-rmp sprint start|close|reopen -r <roadmap> <id>
+rmp sprint list -r golikeit
+rmp sprint show -r golikeit <id>
+rmp sprint start|close|reopen -r golikeit <id>
 ```
 
 ### Sprint Task Ordering
 ```bash
 # Reorder all tasks (set exact order)
-rmp sprint reorder -r <roadmap> <sprint-id> <task-ids>
+rmp sprint reorder -r golikeit <sprint-id> <task-ids>
 
 # Move task to specific position
-rmp sprint move-to -r <roadmap> <sprint-id> <task-id> <position>
+rmp sprint move-to -r golikeit <sprint-id> <task-id> <position>
 
 # Swap two tasks
-rmp sprint swap -r <roadmap> <sprint-id> <task-id-1> <task-id-2>
+rmp sprint swap -r golikeit <sprint-id> <task-id-1> <task-id-2>
 
 # Quick position commands
-rmp sprint top -r <roadmap> <sprint-id> <task-id>
-rmp sprint bottom -r <roadmap> <sprint-id> <task-id>
+rmp sprint top -r golikeit <sprint-id> <task-id>
+rmp sprint bottom -r golikeit <sprint-id> <task-id>
 ```
 
 ## Execution Rules
 
-1. **Retrieve**: Use `rmp task next [N]` to get tasks
+1. **Retrieve**: Use `rmp task next -r golikeit [N]` to get tasks
 2. **Analyze**: Parse functional/technical requirements and acceptance criteria
 3. **Delegate**: Invoke appropriate specialist for implementation
-4. **Transition**: Use `rmp task stat` for ALL state changes
+4. **Transition**: Use `rmp task stat -r golikeit` for ALL state changes
 5. **Validate**: Coordinate with agents for validation
 6. **Report**: Generate summary after completion
 
@@ -202,15 +190,15 @@ Take task specialists field as a recommendation, but use your judgment to assign
 
 When coordinating sprint execution, task ordering may be relevant for:
 
-1. **Prioritizing work**: Use `rmp sprint reorder` to set execution order based on priority/severity
-2. **Ad-hoc adjustments**: Use `move-to`, `swap`, `top`, `bottom` for quick repositioning
+1. **Prioritizing work**: Use `rmp sprint reorder -r golikeit` to set execution order based on priority/severity
+2. **Ad-hoc adjustments**: Use `move-to`, `swap`, `top`, `bottom` with `-r golikeit` for quick repositioning
 
 **Ordering Commands are Coordination Tools:**
 - These commands affect task position, NOT task status
 - Status transitions still use `rmp task stat` following the state machine
 - Task ordering helps specialists understand priority but doesn't replace state management
 
-**Audit Operations for Task Ordering:**
+**Audit Operations for Task Ordering (all with `-r golikeit`):**
 - `SPRINT_REORDER_TASKS` - Logged on reorder command
 - `SPRINT_TASK_MOVE_POSITION` - Logged on move-to, top, bottom commands
 - `SPRINT_TASK_SWAP` - Logged on swap command

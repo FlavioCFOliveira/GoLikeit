@@ -164,12 +164,36 @@ The module exposes a simple, intuitive API.
 
 ### Requirement 10: Caching Layer
 
-The system provides an optional caching layer.
+The system provides an optional caching layer for performance optimization.
 
-- Enabled/disabled via configuration
-- Configurable TTL and max size
-- LRU eviction when max size reached
-- Cache invalidation occurs at Reaction Target granularity
+**Cache Configuration:**
+```go
+type CacheConfig struct {
+    Enabled          bool
+    UserReactionTTL  time.Duration // Default: 60s
+    EntityCountsTTL  time.Duration // Default: 300s
+    MaxEntries       int           // Default: 10000
+    EvictionPolicy   string        // Default: "LRU"
+}
+
+// DefaultCacheConfig returns a configuration with sensible defaults
+func DefaultCacheConfig() CacheConfig {
+    return CacheConfig{
+        Enabled:         true,
+        UserReactionTTL: 60 * time.Second,
+        EntityCountsTTL: 300 * time.Second,
+        MaxEntries:      10000,
+        EvictionPolicy:  "LRU",
+    }
+}
+```
+
+**Capabilities:**
+- Cache user reaction states
+- Cache entity counts per type
+- **Total Synchronized Invalidation**: Every write operation (Add, Replace, Remove) MUST immediately invalidate ALL cache entries related to the affected Reaction Target (both user state and aggregate counts).
+- LRU eviction when maximum entry limit is reached
+- Monitoring of cache hit ratio and memory impact
 
 ### Requirement 11: Pagination
 
@@ -178,9 +202,9 @@ All query operations use consistent limit-offset pagination.
 **Configuration:**
 ```go
 type PaginationConfig struct {
-    DefaultLimit int // Default: 20
+    DefaultLimit int // Default: 25
     MaxLimit     int // Default: 100
-    MaxOffset    int // Default: 10000
+    MaxOffset    int // Default: 100
 }
 ```
 

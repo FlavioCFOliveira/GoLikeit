@@ -2,21 +2,24 @@
 
 ## Overview
 
-The system provides configurable rate limiting to prevent API abuse. Rate limiting operates on a per-user basis using a sliding window algorithm.
+The system provides an OPTIONAL and CONFIGURABLE rate limiting mechanism to protect system resources from abuse. While infrastructure-level protection is the responsibility of the consuming application, the module provides this application-level functionality to enforce business-specific limits (e.g., maximum reactions per user per window).
+
+The system implements a **Sliding Window** algorithm for high precision.
 
 ## Functional Requirements
 
-### Requirement 1: Per-User Rate Limiting
+### Requirement 1: Optional Application-Level Rate Limiting
 
-Rate limits are enforced on a per-user basis.
+Rate limiting is provided as a configurable capability for the consuming application.
 
-- Rate limiting is keyed by `user_id`
-- Rate limit counters are isolated per user
-- Rate limits apply to write operations: AddReaction, RemoveReaction
+- **Optional**: Disabled by default; must be explicitly enabled via configuration.
+- **Configurable**: All limits and windows are defined by the application.
+- **Scope**: Applied to write operations (AddReaction, RemoveReaction) at the module level.
+- **Key**: Rate limiting is keyed by `user_id`.
 
 ### Requirement 2: Sliding Window Algorithm
 
-The system implements sliding window algorithm.
+The system implements a Sliding Window algorithm for high precision.
 
 - Track request timestamps in a sliding window
 - Current window includes all requests within `[now - window_duration, now]`
@@ -25,11 +28,11 @@ The system implements sliding window algorithm.
 
 **Implementation Options:**
 - **In-Memory:** Suitable for single-instance deployments
-- **Redis:** Suitable for distributed deployments
+- **Redis:** Uses sorted sets for distributed sliding window algorithm
 
-### Requirement 3: Configurable Limits
+### Requirement 3: Rate Limiting Configuration
 
-All rate limiting parameters are externally configurable.
+The module MUST allow the application to define specific limits per operation or globally.
 
 ```go
 type RateLimitingConfig struct {
@@ -43,7 +46,6 @@ type RateLimitingConfig struct {
 type OperationLimit struct {
     Requests  int
     Window    time.Duration
-    Algorithm RateLimitAlgorithm
 }
 ```
 

@@ -88,13 +88,14 @@ type EventFilter struct {
 }
 ```
 
-### Requirement 4: Event Delivery Guarantees
+### Requirement 4: Event Delivery and Failure Handling
 
-The system provides configurable delivery guarantees.
+The event system is designed to be non-blocking and decoupled from the primary operational logic of the module.
 
-- **At-Least-Once (Default):** Events guaranteed to be delivered at least once
-- **At-Most-Once:** Events delivered zero or one times
-- **Exactly-Once:** Events delivered exactly once (requires deduplication)
+**Failure Behavior:**
+1.  **Fire-and-Forget**: Event delivery is a best-effort operation. If an event handler fails or the emission fails, the event is discarded and the primary reaction operation remains valid and persisted.
+2.  **No Retry Mechanism**: The system does not implement retry logic for failed event deliveries.
+3.  **Operational Isolation**: Failures in the event system MUST NOT impact the persistence of reaction data.
 
 ### Requirement 5: Event Ordering
 
@@ -112,20 +113,23 @@ The event system operates with minimal performance impact.
 - Event throughput: 10,000+ events/second
 - Memory overhead: <100 bytes per queued event
 
-### Requirement 7: Event Configuration
+### Requirement 7: Event Configuration and Timeouts
 
-The system provides configuration options.
+The system provides configuration options for event system management.
 
 ```go
 type EventConfig struct {
     Enabled          bool
-    SyncTimeout      time.Duration
-    AsyncQueueSize   int
-    AsyncWorkers     int
-    DeliveryGuarantee DeliveryGuarantee
+    SyncTimeout      time.Duration // Default: 1s
+    AsyncQueueSize   int           // Default: 1000
+    AsyncWorkers     int           // Default: 5
     DisabledEvents   []string
 }
 ```
+
+**Timeouts and Performance:**
+1.  **Synchronous Timeout**: Synchronous event handlers MUST adhere to a configurable timeout (`SyncTimeout`). If a handler exceeds this limit, it is canceled via context, and the operation proceeds.
+2.  **Asynchronous Safety**: Asynchronous handlers execute in background workers to minimize impact on the main execution path.
 
 ## Constraints and Limitations
 

@@ -64,13 +64,15 @@ Audit log entries are immutable.
 - Cannot be deleted through the API
 - Updates create new entries
 
-### Requirement 7: Independent Storage
+### Requirement 7: Independent Storage and Failure Handling
 
-The audit package operates on a separate data layer.
+The audit system operates with complete independence from the core reaction storage to ensure maximum availability of the primary service.
 
-- Independent from reaction storage configuration
-- Audit failures do not impact reaction operations
-- Eventual consistency is acceptable
+**Failure Behavior:**
+1.  **Non-Blocking Operations**: Audit logging MUST NOT block or impact the performance of the primary reaction operations.
+2.  **Fire-and-Forget**: If the audit storage is unavailable or an audit write fails, the audit entry is discarded. The primary reaction operation remains valid and persisted.
+3.  **No Retry Mechanism**: The system does not implement retry logic for failed audit writes.
+4.  **No Persistence Guarantee**: While the system attempts to log every operation, it does not guarantee 100% audit delivery in the event of audit storage failure.
 
 ## Constraints and Limitations
 

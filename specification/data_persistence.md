@@ -59,8 +59,9 @@ The system supports efficient querying.
 
 **Pagination:**
 - Limit-offset model
-- Default limit: 20
+- Default limit: 25
 - Maximum limit: 100
+- Maximum offset: 100
 
 **Fast Check Operations:**
 - HasUserReaction: Single key lookup
@@ -108,6 +109,83 @@ Pure in-memory storage is provided.
 - No persistence (data lost on restart)
 - Thread-safe operations
 - Suitable for development and testing
+
+### Requirement 11: Logical Data Model
+
+The system defines a logical data model for persistence, regardless of the underlying storage technology.
+
+**Entities and Attributes:**
+
+- **Reaction:**
+    - `id`: Unique identifier (UUID v4)
+    - `user_id`: Identifier of the user (UUID v4)
+    - `entity_type`: Type of the entity (alphanumeric snake_case)
+    - `entity_id`: Identifier of the specific entity instance (UUID v4)
+    - `reaction_type`: Type of the reaction (uppercase alphanumeric)
+    - `created_at`: Timestamp (ISO 8601 UTC)
+
+- **Reaction Target (Aggregate View):**
+    - `entity_type`: Type of the entity
+    - `entity_id`: Identifier of the entity instance
+    - `counts`: Map of reaction types to their respective totals
+    - `last_reaction_at`: Timestamp of the most recent reaction
+
+**Persistence Guarantees:**
+
+1.  **Uniqueness**: For any combination of `user_id`, `entity_type`, and `entity_id`, there MUST be at most one `Reaction` record.
+2.  **Atomicity**: Creating or updating a `Reaction` MUST be atomic with respect to the `Reaction Target` counts.
+3.  **Consistency**: The sum of individual `Reaction` records for a given `entity_type` and `entity_id` MUST match the totals stored in the `Reaction Target`.
+4.  **Durability**: Once a reaction operation is confirmed, it MUST be persistent in the underlying storage.
+
+### Requirement 12: Connection and Resource Management
+
+The system MUST provide mechanisms for efficient management of database connections and system resources.
+
+**Capabilities:**
+
+1.  **Connection Configuration**: The system MUST accept parameters for locating, identifying, and authenticating with the target data source.
+2.  **Concurrency Control (Pooling)**: The system MUST allow configuring the maximum number of simultaneous active connections to prevent resource exhaustion.
+3.  **Resource Recycling**: The system MUST allow defining maximum lifetime and idle times for connections to ensure resource health and rotation.
+4.  **Operational Timeouts**: The system MUST support configurable time limits for both establishing connections and executing operations to maintain system responsiveness.
+5.  **Graceful Termination**: All resources and connections MUST be properly released during system shutdown.
+
+### Requirement 13: Distributed Storage and Eventual Consistency
+
+The system supports distributed database backends (MongoDB, Cassandra) that may operate under eventual consistency models.
+
+**Consistency Rules:**
+
+1.  **Database-Specific Configuration**: The system MUST allow configuring read and write consistency levels per database adapter (e.g., Read Preference in MongoDB, Consistency Level in Cassandra).
+2.  **State Transparency**: The module MUST provide the best available data provided by the storage backend at the time of the request. No additional logic is implemented to mitigate temporary inconsistencies in paginated results or aggregate counts.
+3.  **Conflict Resolution**: In the event of concurrent write operations, the system delegates conflict resolution to the underlying database mechanism, adhering to the **Last Write Wins (LWW)** principle.
+4.  **Operational Awareness**: Applications using eventually consistent backends MUST be aware that counts and user states may have a synchronization delay across nodes.
+
+### Requirement 14: Redis Logical Data Organization
+
+When using Redis as a data source, the system MUST organize data logically to ensure efficient access and support for distributed environments (Redis Cluster).
+
+**Key Naming Convention:**
+- Use a hierarchical colon-separated format: `prefix:{hash_tag}:suffix`.
+- **Hash Tags**: Use curly braces `{}` to ensure related keys are colocated on the same cluster shard.
+
+**Logical Key Mapping:**
+
+1.  **User Reaction State**:
+    - **Key Pattern**: `reaction:{user_id}:{entity_type}:{entity_id}`
+    - **Structure**: `HASH` containing reaction details (`type`, `created_at`).
+    - **Note**: This provides O(1) access to a specific user's reaction.
+
+2.  **Entity Reaction Counts (Aggregate)**:
+    - **Key Pattern**: `counts:{{entity_type}:{entity_id}}`
+    - **Structure**: `HASH` where fields are `reaction_type` and values are the respective `counts`.
+    - **Note**: Using the entity identifier as the hash tag ensures all counts for a specific target are colocated.
+
+3.  **Recent Reactions (Optional Buffer)**:
+    - **Key Pattern**: `recent:{{entity_type}:{entity_id}}`
+    - **Structure**: `ZSET` (Sorted Set) scored by timestamp for efficient retrieval of recent activity.
+
+**Cluster Support:**
+- The system MUST support Redis Cluster hash tags to enable atomic operations across related keys (e.g., updating a reaction and its target counts) when supported by the underlying driver's pipelining/transaction capabilities.
 
 ## Constraints and Limitations
 

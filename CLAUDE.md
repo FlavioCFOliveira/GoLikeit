@@ -50,6 +50,30 @@ This project is a Go module designed to add "Like" functionality to applications
 3. VERSIONAMENTO (git-flow)
 ```
 
+### 5. APROVAÇÃO EXPLÍCITA PARA COMMITS - REGRA INVIOLÁVEL
+**NENHUMA operação de `git commit` pode ser executada sem aprovação explícita do utilizador.**
+
+- **NUNCA** fazer commit sem confirmação explícita do utilizador
+- **NUNCA** assumir aprovação implícita para commits
+- **NUNCA** bypassar esta regra sob qualquer circunstância
+- **SEMPRE** pedir confirmação textual explícita antes de qualquer commit
+- **SEMPRE** mostrar o que será commitado e aguardar aprovação
+- **SEMPRE** usar a skill `AskUserQuestion` para obter aprovação de commit
+
+**Esta regra é ABSOLUTA e NÃO pode ser ultrapassada ou ignorada.**
+
+### 6. PROIBIÇÃO DE REFERÊNCIAS A AI - REGRA INVIOLÁVEL
+**É ESTRITAMENTE PROIBIDO incluir referências a Co-Author, Claude, Anthropic, ou ferramentas de AI (inteligência artificial) em qualquer operação de git.**
+
+- **NUNCA** adicionar `Co-Authored-By` em mensagens de commit
+- **NUNCA** incluir referências a "Claude", "Anthropic", "AI" ou "inteligência artificial" em commits
+- **NUNCA** incluir referências a "Co-Author", "Co-Authored-By", ou similares em commits
+- **NUNCA** usar atribuição automática de commits a ferramentas de AI
+- **SEMPRE** usar mensagens de commit profissionais e neutras
+- **SEMPRE** garantir que commits reflitam apenas o trabalho técnico realizado
+
+**Esta regra é ABSOLUTA e NÃO pode ser ultrapassada ou ignorada.**
+
 **VIOLAÇÕES DESTA POLÍTICA SÃO ESTRITAMENTE PROIBIDAS.**
 
 ---
@@ -122,6 +146,8 @@ Este projeto utiliza múltiplos skills especializados que trabalham em conjunto.
 - Cria feature/release/hotfix branches
 - Gerencia commits, merges, tags
 - **REGRA CRÍTICA**: Mensagens de commit devem incluir O QUÊ mudou E POR QUÊ
+- **REGRA INVIOLÁVEL**: **NUNCA** executar `git commit` sem aprovação explícita do utilizador via `AskUserQuestion`
+- **REGRA INVIOLÁVEL**: **NUNCA** incluir referências a Co-Author, Claude, Anthropic, ou AI em commits
 
 ### 6. red-team-hacker (SEGURANÇA)
 **Responsabilidade**: Auditoria de segurança ofensiva
@@ -189,9 +215,20 @@ git-flow (commits)
 2. **Task Tracking**: Toda implementação deve estar vinculada a uma task no roadmap
 3. **Delegation Chain**: Coordenador delega → Especialista executa → GitFlow versiona
 4. **No Direct Implementation**: roadmap-coordinator nunca implementa código diretamente
-5. **Git Hygiene**: Toda mudança deve seguir GitFlow com mensagens descritivas
+5. **Git Hygiene**: Toda mudança deve seguir GitFlow com mensagens descritivas. **Commits REQUEREM aprovação explícita do utilizador e NUNCA incluem referências a Co-Author, Claude, Anthropic, ou AI**
 6. **Security Gate**: Features críticas devem passar por red-team-hacker
 7. **Performance Gate**: Otimizações devem começar com go-performance-advisor
+
+---
+
+## Notas Adicionais sobre Git
+
+### Proibição de Co-Authored-By
+**NUNCA** adicionar trailers `Co-Authored-By` em commits, mesmo que sejam gerados automaticamente.
+
+- Mensagens de commit devem ser limpas e profissionais
+- Sem atribuição a ferramentas de assistência
+- Sem menção a Claude, Anthropic, ou qualquer referência a AI
 
 ---
 

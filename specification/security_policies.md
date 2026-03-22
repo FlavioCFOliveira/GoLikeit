@@ -96,7 +96,7 @@ Secure configuration handling.
 2. **No Authorization:** Handled by consuming application.
 3. **No Encryption at Rest:** Database-level responsibility.
 4. **No Network Security:** Infrastructure responsibility.
-5. **No Rate Limiting:** Consuming application responsibility.
+5. **Optional Rate Limiting**: Infrastructure-level protection is the responsibility of the consuming application. The module provides an optional and configurable application-level rate limiting mechanism to protect data and persistence.
 6. **No GDPR Compliance:** Consuming application responsibility.
 
 ## Acceptance Criteria
