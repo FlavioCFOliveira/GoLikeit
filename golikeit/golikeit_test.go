@@ -23,9 +23,11 @@ type mockStorage struct {
 	getUserReactionErr      error
 	getEntityCountsResult   EntityCounts
 	getEntityCountsErr      error
-	getUserReactionsResult  []UserReaction
-	getUserReactionsTotal   int64
-	getUserReactionsErr     error
+	getUserReactionsResult       []UserReaction
+	getUserReactionsTotal        int64
+	getUserReactionsErr          error
+	getUserReactionCountsResult  map[string]int64
+	getUserReactionCountsErr     error
 	getUserReactionsByTypeResult []UserReaction
 	getUserReactionsByTypeTotal  int64
 	getUserReactionsByTypeErr    error
@@ -61,6 +63,10 @@ func (m *mockStorage) GetEntityCounts(ctx context.Context, target EntityTarget) 
 
 func (m *mockStorage) GetUserReactions(ctx context.Context, userID string, pagination Pagination) ([]UserReaction, int64, error) {
 	return m.getUserReactionsResult, m.getUserReactionsTotal, m.getUserReactionsErr
+}
+
+func (m *mockStorage) GetUserReactionCounts(ctx context.Context, userID string, entityTypeFilter string) (map[string]int64, error) {
+	return m.getUserReactionCountsResult, m.getUserReactionCountsErr
 }
 
 func (m *mockStorage) GetUserReactionsByType(ctx context.Context, userID string, reactionType string, pagination Pagination) ([]UserReaction, int64, error) {
@@ -479,6 +485,73 @@ func TestClient_HasUserReaction(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("HasUserReaction() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClient_GetUserReactionCounts(t *testing.T) {
+	ctx := context.Background()
+	validConfig := Config{
+		ReactionTypes: []string{"LIKE", "DISLIKE", "LOVE"},
+		Cache:         CacheConfig{Enabled: false},
+	}
+
+	tests := []struct {
+		name            string
+		userID          string
+		entityTypeFilter string
+		mockResult      map[string]int64
+		mockErr         error
+		wantResult      map[string]int64
+		wantErr         bool
+		expectedErrType error
+	}{
+		{
+			name:       "user with reactions",
+			userID:     "user123",
+			mockResult: map[string]int64{"LIKE": 10, "LOVE": 5},
+			wantResult: map[string]int64{"LIKE": 10, "LOVE": 5},
+			wantErr:    false,
+		},
+		{
+			name:            "empty user ID",
+			userID:          "",
+			mockResult:      map[string]int64{},
+			wantErr:         true,
+			expectedErrType: ErrInvalidInput,
+		},
+		{
+			name:    "storage error",
+			userID:  "user123",
+			mockErr: errors.New("storage error"),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, mock := newTestClient(t, validConfig)
+			mock.getUserReactionCountsResult = tt.mockResult
+			mock.getUserReactionCountsErr = tt.mockErr
+
+			got, err := client.GetUserReactionCounts(ctx, tt.userID, tt.entityTypeFilter)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetUserReactionCounts() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.expectedErrType != nil {
+				if !errors.Is(err, tt.expectedErrType) {
+					t.Errorf("GetUserReactionCounts() error type = %T, want %T", err, tt.expectedErrType)
+				}
+			}
+			if !tt.wantErr {
+				for rt, want := range tt.wantResult {
+					if got[rt] != want {
+						t.Errorf("GetUserReactionCounts() counts[%s] = %v, want %v", rt, got[rt], want)
+					}
+				}
 			}
 		})
 	}

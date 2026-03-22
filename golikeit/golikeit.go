@@ -137,6 +137,9 @@ type ReactionStorage interface {
 	// GetUserReactions retrieves all reactions for a user with pagination.
 	GetUserReactions(ctx context.Context, userID string, pagination Pagination) ([]UserReaction, int64, error)
 
+	// GetUserReactionCounts retrieves aggregated counts per reaction type for a user.
+	GetUserReactionCounts(ctx context.Context, userID string, entityTypeFilter string) (map[string]int64, error)
+
 	// GetUserReactionsByType retrieves reactions of a specific type for a user.
 	GetUserReactionsByType(ctx context.Context, userID string, reactionType string, pagination Pagination) ([]UserReaction, int64, error)
 
@@ -585,6 +588,30 @@ func (c *Client) GetUserReactions(ctx context.Context, userID string, pagination
 	}
 
 	return NewPaginatedResult(reactions, total, pagination.Limit, pagination.Offset), nil
+}
+
+// GetUserReactionCounts retrieves aggregated counts per reaction type for a user.
+// If entityTypeFilter is non-empty, counts are filtered to that entity type.
+// Returns a map of reaction type to count.
+func (c *Client) GetUserReactionCounts(ctx context.Context, userID string, entityTypeFilter string) (map[string]int64, error) {
+	if err := c.checkClosed(); err != nil {
+		return nil, err
+	}
+
+	if err := validateUserID(userID); err != nil {
+		return nil, err
+	}
+
+	if c.storage == nil {
+		return nil, ErrStorageUnavailable
+	}
+
+	counts, err := c.storage.GetUserReactionCounts(ctx, userID, entityTypeFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	return counts, nil
 }
 
 // GetUserReactionsByType retrieves reactions of a specific type for a user with pagination.
