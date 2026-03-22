@@ -1,0 +1,414 @@
+package storage
+
+import (
+	"context"
+	"testing"
+
+	"github.com/FlavioCFOliveira/GoLikeit/golikeit"
+	"github.com/FlavioCFOliveira/GoLikeit/pagination"
+)
+
+// skipIfNoRedis skips the test if Redis is not available.
+func skipIfNoRedis(t *testing.T) {
+	// For CI environments with Redis service
+	// Set REDIS_TEST_ADDR environment variable
+	addr := "localhost:6379"
+	if addr == "" {
+		t.Skip("Skipping Redis test: REDIS_TEST_ADDR not set")
+	}
+}
+
+// newTestRedisStorage creates a test Redis storage.
+func newTestRedisStorage(t *testing.T) *RedisStorage {
+	skipIfNoRedis(t)
+
+	config := RedisConfig{
+		Address:      "localhost:6379",
+		DB:           1, // Use different DB for tests
+		PoolSize:     5,
+		MinIdleConns: 1,
+		MaxRetries:   3,
+	}
+
+	storage, err := NewRedisStorage(config)
+	if err != nil {
+		t.Skipf("Skipping Redis test: %v", err)
+	}
+
+	// Clean up test data
+	ctx := context.Background()
+	storage.client.FlushDB(ctx)
+
+	return storage
+}
+
+func TestRedisStorage_AddReaction(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Add new reaction
+	isReplaced, err := storage.AddReaction(ctx, "user1", target, "LIKE")
+	if err != nil {
+		t.Fatalf("AddReaction failed: %v", err)
+	}
+	if isReplaced {
+		t.Error("Expected isReplaced to be false for new reaction")
+	}
+
+	// Add same reaction (should replace)
+	isReplaced, err = storage.AddReaction(ctx, "user1", target, "LOVE")
+	if err != nil {
+		t.Fatalf("AddReaction failed: %v", err)
+	}
+	if !isReplaced {
+		t.Error("Expected isReplaced to be true for replacement")
+	}
+
+	// Verify replacement
+	reactionType, err := storage.GetUserReaction(ctx, "user1", target)
+	if err != nil {
+		t.Fatalf("GetUserReaction failed: %v", err)
+	}
+	if reactionType != "LOVE" {
+		t.Errorf("Expected LOVE, got %s", reactionType)
+	}
+}
+
+func TestRedisStorage_RemoveReaction(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Try to remove non-existent reaction
+	err := storage.RemoveReaction(ctx, "user1", target)
+	if err != golikeit.ErrReactionNotFound {
+		t.Errorf("Expected ErrReactionNotFound, got %v", err)
+	}
+
+	// Add and then remove
+	_, err = storage.AddReaction(ctx, "user1", target, "LIKE")
+	if err != nil {
+		t.Fatalf("AddReaction failed: %v", err)
+	}
+
+	err = storage.RemoveReaction(ctx, "user1", target)
+	if err != nil {
+		t.Errorf("RemoveReaction failed: %v", err)
+	}
+
+	// Verify removal
+	_, err = storage.GetUserReaction(ctx, "user1", target)
+	if err != golikeit.ErrReactionNotFound {
+		t.Errorf("Expected reaction to be removed, got %v", err)
+	}
+}
+
+func TestRedisStorage_GetUserReaction(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Get non-existent reaction
+	_, err := storage.GetUserReaction(ctx, "user1", target)
+	if err != golikeit.ErrReactionNotFound {
+		t.Errorf("Expected ErrReactionNotFound, got %v", err)
+	}
+
+	// Add reaction and get
+	_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	reactionType, err := storage.GetUserReaction(ctx, "user1", target)
+	if err != nil {
+		t.Fatalf("GetUserReaction failed: %v", err)
+	}
+	if reactionType != "LIKE" {
+		t.Errorf("Expected LIKE, got %s", reactionType)
+	}
+}
+
+func TestRedisStorage_HasUserReaction(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Check non-existent
+	has, err := storage.HasUserReaction(ctx, "user1", target)
+	if err != nil {
+		t.Fatalf("HasUserReaction failed: %v", err)
+	}
+	if has {
+		t.Error("Expected false for non-existent reaction")
+	}
+
+	// Add and check
+	_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	has, err = storage.HasUserReaction(ctx, "user1", target)
+	if err != nil {
+		t.Fatalf("HasUserReaction failed: %v", err)
+	}
+	if !has {
+		t.Error("Expected true for existing reaction")
+	}
+}
+
+func TestRedisStorage_GetEntityCounts(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Get counts for empty entity
+	counts, err := storage.GetEntityCounts(ctx, target)
+	if err != nil {
+		t.Fatalf("GetEntityCounts failed: %v", err)
+	}
+	if counts.Total != 0 {
+		t.Errorf("Expected total 0, got %d", counts.Total)
+	}
+
+	// Add reactions from different users
+	_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	_, _ = storage.AddReaction(ctx, "user2", target, "LIKE")
+	_, _ = storage.AddReaction(ctx, "user3", target, "LOVE")
+
+	counts, err = storage.GetEntityCounts(ctx, target)
+	if err != nil {
+		t.Fatalf("GetEntityCounts failed: %v", err)
+	}
+	if counts.Total != 3 {
+		t.Errorf("Expected total 3, got %d", counts.Total)
+	}
+	if counts.Counts["LIKE"] != 2 {
+		t.Errorf("Expected 2 LIKEs, got %d", counts.Counts["LIKE"])
+	}
+	if counts.Counts["LOVE"] != 1 {
+		t.Errorf("Expected 1 LOVE, got %d", counts.Counts["LOVE"])
+	}
+}
+
+func TestRedisStorage_GetUserReactions(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// Add reactions for user1
+	for i := 1; i <= 5; i++ {
+		target := golikeit.EntityTarget{EntityType: "post", EntityID: string(rune('0' + i))}
+		_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	}
+
+	pag := pagination.Pagination{Limit: 3, Offset: 0}
+	reactions, total, err := storage.GetUserReactions(ctx, "user1", Filters{}, pag)
+	if err != nil {
+		t.Fatalf("GetUserReactions failed: %v", err)
+	}
+	if total != 5 {
+		t.Errorf("Expected total 5, got %d", total)
+	}
+	if len(reactions) != 3 {
+		t.Errorf("Expected 3 reactions, got %d", len(reactions))
+	}
+}
+
+func TestRedisStorage_GetUserReactionCounts(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// Add reactions of different types
+	for i := 1; i <= 3; i++ {
+		target := golikeit.EntityTarget{EntityType: "post", EntityID: string(rune('0' + i))}
+		_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	}
+	for i := 4; i <= 5; i++ {
+		target := golikeit.EntityTarget{EntityType: "post", EntityID: string(rune('0' + i))}
+		_, _ = storage.AddReaction(ctx, "user1", target, "LOVE")
+	}
+
+	counts, err := storage.GetUserReactionCounts(ctx, "user1", "")
+	if err != nil {
+		t.Fatalf("GetUserReactionCounts failed: %v", err)
+	}
+	if counts["LIKE"] != 3 {
+		t.Errorf("Expected 3 LIKEs, got %d", counts["LIKE"])
+	}
+	if counts["LOVE"] != 2 {
+		t.Errorf("Expected 2 LOVEs, got %d", counts["LOVE"])
+	}
+}
+
+func TestRedisStorage_GetUserReactionsByType(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// Add reactions
+	target1 := golikeit.EntityTarget{EntityType: "post", EntityID: "1"}
+	target2 := golikeit.EntityTarget{EntityType: "post", EntityID: "2"}
+	_, _ = storage.AddReaction(ctx, "user1", target1, "LIKE")
+	_, _ = storage.AddReaction(ctx, "user1", target2, "LOVE")
+
+	pag := pagination.Pagination{Limit: 10, Offset: 0}
+	reactions, total, err := storage.GetUserReactionsByType(ctx, "user1", "LIKE", pag)
+	if err != nil {
+		t.Fatalf("GetUserReactionsByType failed: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("Expected total 1, got %d", total)
+	}
+	if len(reactions) != 1 {
+		t.Errorf("Expected 1 reaction, got %d", len(reactions))
+	}
+	if reactions[0].ReactionType != "LIKE" {
+		t.Errorf("Expected LIKE reaction, got %s", reactions[0].ReactionType)
+	}
+}
+
+func TestRedisStorage_GetEntityReactions(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Add reactions from different users
+	_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	_, _ = storage.AddReaction(ctx, "user2", target, "LIKE")
+
+	pag := pagination.Pagination{Limit: 10, Offset: 0}
+	reactions, total, err := storage.GetEntityReactions(ctx, target, pag)
+	if err != nil {
+		t.Fatalf("GetEntityReactions failed: %v", err)
+	}
+	if total != 2 {
+		t.Errorf("Expected total 2, got %d", total)
+	}
+	if len(reactions) != 2 {
+		t.Errorf("Expected 2 reactions, got %d", len(reactions))
+	}
+}
+
+func TestRedisStorage_GetRecentReactions(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Add reactions
+	_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	_, _ = storage.AddReaction(ctx, "user2", target, "LOVE")
+
+	recent, err := storage.GetRecentReactions(ctx, target, 10)
+	if err != nil {
+		t.Fatalf("GetRecentReactions failed: %v", err)
+	}
+	if len(recent) != 2 {
+		t.Errorf("Expected 2 recent reactions, got %d", len(recent))
+	}
+}
+
+func TestRedisStorage_GetLastReactionTime(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Get for empty entity
+	lastTime, err := storage.GetLastReactionTime(ctx, target)
+	if err != nil {
+		t.Fatalf("GetLastReactionTime failed: %v", err)
+	}
+	if lastTime != nil {
+		t.Error("Expected nil for empty entity")
+	}
+
+	// Add reactions
+	_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	_, _ = storage.AddReaction(ctx, "user2", target, "LOVE")
+
+	lastTime, err = storage.GetLastReactionTime(ctx, target)
+	if err != nil {
+		t.Fatalf("GetLastReactionTime failed: %v", err)
+	}
+	if lastTime == nil {
+		t.Error("Expected non-nil last time")
+	}
+}
+
+func TestRedisStorage_GetEntityReactionDetail(t *testing.T) {
+	storage := newTestRedisStorage(t)
+	defer storage.Close()
+
+	ctx := context.Background()
+	target := golikeit.EntityTarget{EntityType: "post", EntityID: "123"}
+
+	// Add reactions
+	_, _ = storage.AddReaction(ctx, "user1", target, "LIKE")
+	_, _ = storage.AddReaction(ctx, "user2", target, "LIKE")
+	_, _ = storage.AddReaction(ctx, "user3", target, "LOVE")
+
+	detail, err := storage.GetEntityReactionDetail(ctx, target, 2)
+	if err != nil {
+		t.Fatalf("GetEntityReactionDetail failed: %v", err)
+	}
+	if detail.TotalReactions != 3 {
+		t.Errorf("Expected total 3, got %d", detail.TotalReactions)
+	}
+	if detail.CountsByType["LIKE"] != 2 {
+		t.Errorf("Expected 2 LIKEs, got %d", detail.CountsByType["LIKE"])
+	}
+	if detail.LastReaction == nil {
+		t.Error("Expected non-nil last reaction time")
+	}
+}
+
+func TestRedisConfig_Default(t *testing.T) {
+	config := DefaultRedisConfig()
+	if config.Address != "localhost:6379" {
+		t.Errorf("Expected address localhost:6379, got %s", config.Address)
+	}
+	if config.DB != 0 {
+		t.Errorf("Expected DB 0, got %d", config.DB)
+	}
+	if config.PoolSize != 10 {
+		t.Errorf("Expected pool size 10, got %d", config.PoolSize)
+	}
+}
+
+func TestParseInt64(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+		wantErr  bool
+	}{
+		{"123", 123, false},
+		{"0", 0, false},
+		{"-456", -456, false},
+		{"abc", 0, true},
+	}
+
+	for _, tt := range tests {
+		result, err := parseInt64(tt.input)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseInt64(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			continue
+		}
+		if result != tt.expected {
+			t.Errorf("parseInt64(%q) = %d, want %d", tt.input, result, tt.expected)
+		}
+	}
+}
