@@ -2,349 +2,136 @@
 
 ## Overview
 
-The system shall provide a storage-agnostic data layer capable of persisting reaction data across multiple database backends including PostgreSQL, MariaDB, and SQLite. The data layer abstracts database-specific implementations while providing consistent behavior and data integrity guarantees.
+The system provides a storage-agnostic data layer capable of persisting reaction data across multiple database backends.
 
 ## Functional Requirements
 
 ### Requirement 1: Multi-Database Support
 
-**Description:** The system shall support PostgreSQL, MariaDB, SQLite, MongoDB, Cassandra, Redis, and In-Memory as storage backends.
+The system supports multiple storage backends.
 
 **Supported Backends:**
-- **PostgreSQL:** Versions 12 and above
-- **MariaDB:** Versions 10.5 and above
-- **SQLite:** Version 3.35.0 and above (with WAL mode support)
-- **MongoDB:** Versions 4.4 and above
-- **Cassandra:** Versions 3.11 and above (CQL compatible)
-- **Redis:** Versions 6.0 and above (with RedisJSON module recommended)
-- **In-Memory:** Pure in-memory storage (no persistence, data lost on restart)
-
-**Requirements:**
-- The system shall detect or be configured with the target database type
-- Database-specific optimizations shall be applied for maximum performance
-- Behavior shall remain consistent across all supported backends
-- Connection pooling shall be supported where applicable
-- In-Memory storage is suitable for development, testing, or ephemeral data
-
-**Database-Specific Optimizations:**
-- **PostgreSQL:** Use prepared statements, proper index types, connection pooling with pgx
-- **MariaDB:** Use InnoDB engine, connection pooling, query caching where appropriate
-- **SQLite:** Use WAL mode, appropriate cache size, single-writer optimizations
-- **MongoDB:** Use compound indexes, aggregation pipelines for counts, connection pooling
-- **Cassandra:** Use appropriate replication factor, partition key design, prepared statements, batch operations where applicable
-- **Redis:** Use hash data structures for reactions, hash for entity counts per type, pipelining for batch operations
-- **In-Memory:** Use Go maps with RWMutex for thread-safe access; periodic snapshots optional
+- **PostgreSQL:** Versions 12+
+- **MariaDB:** Versions 10.5+
+- **SQLite:** Version 3.35.0+
+- **MongoDB:** Versions 4.4+
+- **Cassandra:** Versions 3.11+
+- **Redis:** Versions 6.0+
+- **In-Memory:** Pure in-memory storage
 
 ### Requirement 2: Data Integrity
 
-**Description:** The system shall maintain data integrity for all User Reaction records.
+The system maintains data integrity.
 
-**Requirements:**
-- Each User Reaction record shall have a unique identifier
-- The combination of (user_id, entity_type, entity_id) shall be unique (one reaction per User Reaction)
-- Reaction timestamps shall be stored with timezone information or in UTC
-- Reaction Target counts shall remain consistent with the underlying User Reaction data
-
-**User Reaction Uniqueness:**
-- The composite key (user_id, entity_type, entity_id) represents a single User Reaction
-- Duplicate User Reactions are prevented at the database level via unique constraints
-- Only one reaction can exist per User Reaction; adding a new reaction replaces any existing one
-
-**Constraints:**
-- Data corruption shall be detected and reported
-- Partial writes shall be prevented or automatically rolled back
-- Concurrent modifications shall not leave the database in an inconsistent state
+- Each User Reaction has a unique identifier
+- Composite key (user_id, entity_type, entity_id) is unique
+- Timestamps stored in UTC
+- Reaction Target counts remain consistent with User Reaction data
 
 ### Requirement 3: User Reaction Data Model
 
-**Description:** The system shall store User Reaction data with the following minimum attributes.
-
 **Required Fields:**
-- **id:** Unique identifier for the User Reaction record
-- **user_id:** Identifier of the user who performed the reaction (User Reaction user component)
-- **entity_type:** Type of entity being reacted to (Reaction Target type component)
-- **entity_id:** Identifier of the specific entity instance (Reaction Target ID component)
-- **reaction_type:** Type of reaction (must match one of the configured reaction types)
-- **created_at:** Timestamp when the reaction was created or replaced
-
-**Composite Key:**
-- The combination of (user_id, entity_type, entity_id) represents a User Reaction
-- This composite key shall be unique at the database level
-- Together, these fields identify a user's reaction to a specific Reaction Target
-
-**Behavior:**
-- Creating a new reaction sets created_at to the current time
-- When a reaction is replaced with a different type, the record is updated with the new reaction_type and created_at timestamp
-- Deleting a reaction (RemoveReaction) removes the record entirely
-- The created_at timestamp always represents when the current reaction was established (including replacements)
+- **id:** Unique identifier
+- **user_id:** User who performed the reaction
+- **entity_type:** Type of entity
+- **entity_id:** Entity instance identifier
+- **reaction_type:** Type of reaction
+- **created_at:** Timestamp when reaction was created or replaced
 
 ### Requirement 4: Atomic Operations
 
-**Description:** Operations that modify multiple related records shall be atomic.
+Operations that modify multiple records are atomic.
 
-**Requirements:**
-- Creating or replacing a User Reaction and updating Reaction Target counts shall be atomic
-- Removing a User Reaction and updating Reaction Target counts shall be atomic
-- Failed operations shall leave the database in its previous consistent state
-
-**Replacement Semantics:**
-- When a reaction is replaced, the previous reaction type's count is decremented and the new type's count is incremented atomically
-- Replacement is implemented as UPSERT: INSERT on conflict UPDATE
-
-**Constraints:**
-- Atomicity shall be enforced at the database transaction level
-- Transactions shall use appropriate isolation levels
-- Deadlocks shall be detected and handled appropriately
+- Creating/replacing User Reaction and updating counts is atomic
+- Removing User Reaction and updating counts is atomic
+- Failed operations leave database in consistent state
 
 ### Requirement 5: Query Capabilities
 
-**Description:** The system shall support efficient querying of User Reaction data with consolidated results.
+The system supports efficient querying.
 
 **Required Queries:**
-- Retrieve User Reaction by (user_id, entity_type, entity_id)
-- Retrieve all User Reactions for a user with optional filters (by entity_type, by reaction_type)
-- Retrieve all User Reactions for a Reaction Target
-- Retrieve aggregated counts by Reaction Target (counts per configured reaction type)
-- Retrieve aggregated counts by user
-- **Consolidated Entity Query:** Retrieve counts AND recent users who reacted in single operation
-  - Returns: counts per reaction type, list of recent users per reaction type
-  - Single database invocation to get complete reaction picture
+- Retrieve User Reaction by composite key
+- Retrieve all reactions for a user
+- Retrieve all reactions for a Reaction Target
+- Retrieve aggregated counts per reaction type
+- Consolidated query (counts + recent users)
 
-**Efficiency Requirements:**
-- **Minimize Round Trips:** All query operations shall fetch required data in minimum database calls
-- **Single Invocation:** Consolidated queries (counts + users) shall use single database invocation where possible
-  - SQL: Use JOINs or subqueries to fetch counts and users in one query
-  - MongoDB: Use aggregation pipelines with $facet
-  - Redis: Use Lua scripts or pipelining for multi-key operations
-  - Cassandra: Design tables to support query patterns; denormalize where necessary
-- **Batch Operations:** Support fetching multiple entities/users in single call
-- **Projection:** Only request fields needed for the specific query
-- **No N+1:** Query implementations shall avoid N+1 query patterns
-
-**Pagination Requirements (Limit-Offset):**
-- **Consistent Pagination:** All data layer implementations use same limit-offset pagination model
-- **Limit:** Number of records requested; default 20, maximum 100
-- **Offset:** Starting position (0-based); e.g., offset 0 = first record, offset 20 = second page with limit 20
-- **Database Implementation:**
-  - SQL: Use LIMIT/OFFSET clauses
-  - MongoDB: Use skip() and limit()
-  - Redis: Use LRANGE or similar range operations
-  - Cassandra: Use token-based paging or LIMIT with WHERE clause
-- **Response Fields:** Must include:
-  - Total records matching query
-  - Total pages (calculated as ceil(Total / Limit))
-  - Current page (calculated as Offset/Limit + 1)
-  - HasNext/HasPrev flags
-- **Cursor Support:** Optional cursor-based pagination for very large datasets
-- **Threshold:** Automatic pagination for queries returning >50 records
-
-**Pagination in Eventually Consistent Systems:**
-- MongoDB and Cassandra provide eventual consistency by default
-- Under high concurrency, paginated queries may return duplicate records or miss records that were added/removed during pagination
-- The application accepts these characteristics as inherent to the chosen database
-- For strong consistency requirements, use SQL backends (PostgreSQL, MariaDB) or configure MongoDB/Cassandra for stronger consistency (with performance trade-offs)
-- Applications requiring strict pagination consistency should implement cursor-based pagination at the application layer
+**Pagination:**
+- Limit-offset model
+- Default limit: 20
+- Maximum limit: 100
 
 **Fast Check Operations:**
-- **HasUserReaction:** Ultra-fast boolean check if user has any reaction (single key lookup)
-  - SQL: SELECT EXISTS(SELECT 1 FROM reactions WHERE ...)
-  - Redis: EXISTS reaction:{user_id}:{entity_type}:{entity_id}
-  - MongoDB: Count with limit 1
-  - In-Memory: Map lookup with O(1)
-- **HasUserReactionType:** Ultra-fast check if user has specific reaction type
-- **Performance Target:** <10ms p95 latency
-- **Cache Priority:** Check cache before database for fastest response
-
-**Performance Requirements:**
-- Queries by (user_id, entity_type, entity_id) shall use indexed lookups
-- Reaction Target count queries shall be optimized (materialized or cached)
-- Pagination shall be supported for large result sets
-- Consolidated queries shall complete within same time budget as simple count queries
+- HasUserReaction: Single key lookup
+- HasUserReactionType: Single key lookup
+- Target: <10ms p95 latency
 
 ### Requirement 6: Migration Support
 
-**Description:** The system shall provide schema migration capabilities.
+Schema migrations are supported.
 
-**Requirements:**
-- Schema changes shall be versioned
-- Migration scripts shall be provided for each supported database
-- Up and down migrations shall be available
-- Migration state shall be tracked in the database
-
-**Constraints:**
-- Migrations shall be reversible where possible
-- Data loss during migration shall be minimized
-- Migration failures shall be detected and reported
+- Schema changes are versioned
+- Migration scripts provided for each database
+- Migration state tracked in database
 
 ### Requirement 7: Connection Management
 
-**Description:** The system shall manage database connections efficiently.
+Database connections are managed efficiently.
 
-**Requirements:**
-- Connection pooling shall be supported for PostgreSQL, MariaDB, MongoDB, and Cassandra
-- Connection timeouts shall be configurable
-- Failed connections shall be reported with clear error messages
-- Resources shall be properly released on shutdown
-- Connection strings shall be validated at startup
+- Connection pooling supported
+- Configurable timeouts
+- Resources released on shutdown
 
 ### Requirement 8: Performance Optimization
 
-**Description:** All database interactions shall be optimized for maximum performance.
+Database interactions are optimized.
 
-**Query Optimization Requirements:**
-- **Index Usage:** All queries must use appropriate indexes; full table scans are prohibited for hot paths
-- **Prepared Statements:** Use prepared statements for all repeated queries
-- **Batch Operations:** Support batch inserts/updates where applicable
-- **Projection:** Queries shall request only necessary fields, not use SELECT *
-- **Connection Reuse:** Connections must be returned to the pool promptly
-- **Query Plan Review:** Query patterns shall be reviewed for optimal execution plans
+- Proper index usage
+- Prepared statements for repeated queries
+- Batch operations supported
+- Projection (only request necessary fields)
 
-**Database-Specific Performance:**
-- **PostgreSQL:** Use EXPLAIN ANALYZE for query review; implement partial indexes where beneficial
-- **MariaDB:** Use EXPLAIN for query review; consider covering indexes
-- **SQLite:** Use EXPLAIN QUERY PLAN; optimize for single-writer scenarios
-- **MongoDB:** Use explain() for query review; design indexes for query patterns
-- **Cassandra:** Design tables for query patterns; avoid ALLOW FILTERING
+### Requirement 9: Redis Storage
 
-**Monitoring:**
-- Slow query logging (configurable threshold)
-- Query execution time metrics
-- Connection pool utilization metrics
+Redis is supported as a storage backend.
 
-### Requirement 9: Redis Storage Support
+- User Reactions stored as hash entries
+- Entity Counts stored as hash per type
+- Pipelining for batch operations
+- Support for Redis Cluster and Sentinel
 
-**Description:** The system shall support Redis as a storage backend for high-performance, low-latency reaction storage.
+### Requirement 10: In-Memory Storage
 
-**Redis Data Model:**
-- **User Reactions:** Stored as hash entries with key pattern `reaction:{user_id}:{entity_type}:{entity_id}` containing reaction_type
-- **Entity Counts:** Stored as hash with key `counts:{entity_type}:{entity_id}` containing count per reaction type
-- **User Reaction Index:** Set per user containing all entities reacted to for quick lookup
-- **Entity Reaction Index:** Set per entity containing all users who reacted for aggregation
+Pure in-memory storage is provided.
 
-**Redis Operations:**
-- **Pipelining:** Batch operations use pipelining to minimize round trips
-- **Transactions:** Multi/Exec for atomic counter updates
-- **Lua Scripts:** Server-side scripts for complex atomic operations (e.g., replace reaction type)
-- **TTL Support:** Not applicable to Redis as storage backend. TTL is used exclusively by the cache layer (see [api_interface.md](api_interface.md)). When Redis is used as storage, entries are persistent unless explicitly deleted. When Redis is used as cache, TTL controls cache entry expiration.
-
-**Requirements:**
-- Redis connection pooling via go-redis or similar client
-- Support for Redis Cluster and Redis Sentinel configurations
-- Automatic reconnection with exponential backoff
-- Configurable key prefix for namespace isolation
-
-**Redis Limitations:**
-- Memory-based storage requires sufficient RAM for dataset
-- Durability depends on Redis persistence configuration (RDB/AOF)
-- Eventual consistency in Redis Cluster mode for some operations
-
-### Requirement 10: In-Memory Storage Support
-
-**Description:** The system shall provide a pure in-memory storage implementation for development, testing, and ephemeral use cases.
-
-**In-Memory Storage Characteristics:**
-- **No Persistence:** Data exists only in process memory; all data is lost on application restart
-- **No External Dependencies:** No database server required; ideal for development and testing
-- **Thread-Safe:** All operations are safe for concurrent access from multiple goroutines
-- **Performance:** Fastest possible read/write performance (no network or disk I/O)
-
-**Use Cases:**
-- Development and local testing without database setup
-- Unit tests requiring isolated, fast storage
-- Ephemeral data that does not require persistence
-- High-performance scenarios where durability is not required
-
-**Data Structures:**
-- **User Reactions:** Stored in Go maps with composite key (user_id + entity_type + entity_id) mapping to reaction_type
-- **Entity Counts:** Maintained in separate counters map per reaction type with atomic operations
-- **Concurrency:** RWMutex for read-heavy operations; sync.Map optional for high concurrency
-
-**Limitations:**
-- Data is not persisted across application restarts
-- Memory usage is limited by available RAM
-- No replication or backup capabilities
-- Single-node only (no distributed in-memory option)
-
-**Requirements:**
-- In-Memory storage implements the same Data Layer interface as persistent backends
-- Switching between In-Memory and persistent storage requires no code changes (only configuration)
-- Atomic operations are simulated with mutex locks
-- Query capabilities match persistent backends (filtered by user, entity, etc.)
+- No persistence (data lost on restart)
+- Thread-safe operations
+- Suitable for development and testing
 
 ## Constraints and Limitations
 
-1. **No Automatic Schema Creation in Production:** Production deployments should create schemas through explicit migration commands, not automatic initialization.
-
-2. **Database-Specific Types:** While behavior is consistent, some field types may vary by database (e.g., UUID storage, timestamp precision).
-
-3. **SQLite Limitations:** SQLite has reduced concurrency compared to PostgreSQL and MariaDB. Write operations are serialized at the database level.
-
-4. **MongoDB Considerations:** MongoDB uses eventual consistency for some operations; transaction support requires replica sets.
-
-5. **Cassandra Considerations:** Cassandra prioritizes availability over consistency; design requires careful partition key selection.
-
-6. **Redis Considerations:** Redis is memory-based; durability depends on persistence settings. Cluster mode has eventual consistency for multi-key operations.
-
-7. **In-Memory Limitations:** Data is lost on application restart; limited by available RAM; not suitable for production use cases requiring durability.
-
-8. **No Cross-Database Replication:** The system does not provide built-in replication between different database types.
-
-9. **No Embedded Cache:** The data persistence layer does not include application-level caching; this is the responsibility of higher layers.
-
-10. **Independent Audit Storage:** While reaction data uses the configured primary storage, audit logging may be configured to use a separate database. See [audit_logging.md](audit_logging.md) for details.
-
-11. **No Built-in Backup and Restore:** Backup, restore, and disaster recovery procedures are not provided by this module. These are the responsibility of the database administrator and infrastructure layer, using native database tools (pg_dump, mongodump, etc.) or external backup solutions. The consuming application should implement backup strategies appropriate to their chosen storage backend.
-
-## Relationships with Other Functional Blocks
-
-- **[reaction_management.md](reaction_management.md):** Defines the data operations for reactions
-- **[entity_association.md](entity_association.md):** Defines how entity references are stored
-- **[user_interactions.md](user_interactions.md):** Defines how user identifiers are stored
-- **[performance_requirements.md](performance_requirements.md):** Defines storage performance expectations
-- **[audit_logging.md](audit_logging.md):** Defines the audit logging storage requirements
-
-## Change History
-
-| Date | Change | Description |
-|------|--------|-------------|
-| 2026-03-21 | Initial | First version of data persistence specification |
-| 2026-03-21 | Update | Clarified reaction timestamp represents moment of LIKE/DISLIKE action; removed updated_at field |
-| 2026-03-21 | Update | Updated data model to reflect User Reaction and Reaction Target concepts; added duplicate detection requirements |
-| 2026-03-21 | Update | Added note about independent audit storage capability |
-| 2026-03-21 | Update | Added MongoDB and Cassandra support; added Requirement 8 (Performance Optimization) |
-| 2026-03-21 | Update | Added Requirement 9 (Redis Storage Support) and Requirement 10 (In-Memory Storage Support) |
-| 2026-03-21 | Update | Added Requirement 5 efficiency requirements (minimize round trips, single invocation for consolidated queries) |
-| 2026-03-21 | Update | Added pagination requirements and fast check operation requirements to Requirement 5 |
-| 2026-03-21 | Update | Updated pagination to limit-offset principle with total records and total pages in response |
-| 2026-03-22 | Major | Updated for abstract reaction model - single reaction per user, replacement semantics, counts per reaction type |
+1. **No Automatic Schema Creation:** Production deployments use explicit migrations.
+2. **SQLite Limitations:** Reduced concurrency compared to PostgreSQL/MariaDB.
+3. **MongoDB Considerations:** Eventual consistency for some operations.
+4. **Redis Considerations:** Memory-based; durability depends on persistence settings.
+5. **In-Memory Limitations:** Data lost on restart; limited by RAM.
+6. **Independent Audit Storage:** Audit may use separate database.
 
 ## Acceptance Criteria
 
-1. **AC1:** The system supports PostgreSQL 12+ as a storage backend
-2. **AC2:** The system supports MariaDB 10.5+ as a storage backend
-3. **AC3:** The system supports SQLite 3.35.0+ as a storage backend
-4. **AC4:** The system supports MongoDB 4.4+ as a storage backend
-5. **AC5:** The system supports Cassandra 3.11+ as a storage backend
-6. **AC6:** The system supports Redis 6.0+ as a storage backend
-7. **AC7:** The system supports In-Memory storage for development and testing
-8. **AC8:** All User Reaction data includes required fields (id, user_id, entity_type, entity_id, reaction_type, created_at)
-9. **AC9:** The combination of (user_id, entity_type, entity_id) is unique across the system (User Reaction uniqueness)
-10. **AC10:** Creating or replacing a User Reaction and updating Reaction Target counts is atomic
-11. **AC11:** Removing a User Reaction and updating Reaction Target counts is atomic
-12. **AC12:** Failed operations do not leave partial data in the database
-13. **AC13:** Queries by (user_id, entity_type, entity_id) use indexed lookups
-14. **AC14:** Schema migrations are versioned and tracked
-15. **AC15:** Migration scripts are provided for all supported databases
-16. **AC16:** Connection pooling is supported for PostgreSQL, MariaDB, MongoDB, Cassandra, and Redis
-17. **AC17:** Replacement operations update counts atomically (decrement old type, increment new type)
-18. **AC18:** All queries use appropriate indexes; no full table scans on hot paths
-19. **AC19:** Prepared statements are used for all repeated queries
-20. **AC20:** Query execution times are logged and monitored
-21. **AC21:** In-Memory storage implements the same Data Layer interface as persistent backends
-22. **AC22:** Redis supports pipelining for batch operations
-23. **AC23:** Consolidated queries (counts + users) use single database invocation where possible
-24. **AC24:** No N+1 query patterns in query implementations
-25. **AC25:** Queries for user reactions use pagination (default 20, max 100)
-26. **AC26:** All data layer implementations use consistent pagination model
-27. **AC27:** HasUserReaction and HasUserReactionType use single key lookup
-28. **AC28:** Fast check operations complete in <10ms p95 latency
+1. **AC1:** Supports PostgreSQL 12+
+2. **AC2:** Supports MariaDB 10.5+
+3. **AC3:** Supports SQLite 3.35.0+
+4. **AC4:** Supports MongoDB 4.4+
+5. **AC5:** Supports Cassandra 3.11+
+6. **AC6:** Supports Redis 6.0+
+7. **AC7:** Supports In-Memory storage
+8. **AC8:** All User Reactions include required fields
+9. **AC9:** Composite key (user_id, entity_type, entity_id) is unique
+10. **AC10:** Creating/replacing reaction and updating counts is atomic
+11. **AC11:** Removing reaction and updating counts is atomic
+12. **AC12:** Queries use indexed lookups
+13. **AC13:** Schema migrations are versioned
+14. **AC14:** Connection pooling is supported
+15. **AC15:** Fast check operations complete in <10ms p95
