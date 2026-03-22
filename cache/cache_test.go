@@ -408,3 +408,386 @@ func BenchmarkCache_Set(b *testing.B) {
 		c.Set(string(rune('a'+i%26)), i, time.Minute)
 	}
 }
+
+// TestReactionCache_DeleteUserReaction tests the DeleteUserReaction method.
+func TestReactionCache_DeleteUserReaction(t *testing.T) {
+	t.Run("delete existing user reaction", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Set and verify
+		reaction := UserReaction{ReactionType: "LIKE", Timestamp: time.Now()}
+		c.SetUserReaction("user1", "photo", "1", reaction)
+
+		got, ok := c.GetUserReaction("user1", "photo", "1")
+		if !ok {
+			t.Fatal("expected to find user reaction before delete")
+		}
+		if got.ReactionType != "LIKE" {
+			t.Errorf("expected LIKE, got %s", got.ReactionType)
+		}
+
+		// Delete
+		c.DeleteUserReaction("user1", "photo", "1")
+
+		// Verify deletion
+		_, ok = c.GetUserReaction("user1", "photo", "1")
+		if ok {
+			t.Error("expected user reaction to be deleted")
+		}
+	})
+
+	t.Run("delete non-existing user reaction", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Delete should not panic
+		c.DeleteUserReaction("user1", "photo", "1")
+
+		// Verify still no reaction
+		_, ok := c.GetUserReaction("user1", "photo", "1")
+		if ok {
+			t.Error("expected no user reaction")
+		}
+	})
+
+	t.Run("delete in disabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		config.Enabled = false
+		c := NewReactionCache(config)
+
+		// Delete should not panic
+		c.DeleteUserReaction("user1", "photo", "1")
+	})
+}
+
+// TestReactionCache_DeleteEntityCounts tests the DeleteEntityCounts method.
+func TestReactionCache_DeleteEntityCounts(t *testing.T) {
+	t.Run("delete existing entity counts", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Set and verify
+		counts := EntityCounts{
+			CountsByType:   map[string]int64{"LIKE": 10},
+			TotalReactions: 10,
+			Timestamp:      time.Now(),
+		}
+		c.SetEntityCounts("photo", "1", counts)
+
+		got, ok := c.GetEntityCounts("photo", "1")
+		if !ok {
+			t.Fatal("expected to find entity counts before delete")
+		}
+		if got.TotalReactions != 10 {
+			t.Errorf("expected total 10, got %d", got.TotalReactions)
+		}
+
+		// Delete
+		c.DeleteEntityCounts("photo", "1")
+
+		// Verify deletion
+		_, ok = c.GetEntityCounts("photo", "1")
+		if ok {
+			t.Error("expected entity counts to be deleted")
+		}
+	})
+
+	t.Run("delete non-existing entity counts", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Delete should not panic
+		c.DeleteEntityCounts("photo", "1")
+
+		// Verify still no counts
+		_, ok := c.GetEntityCounts("photo", "1")
+		if ok {
+			t.Error("expected no entity counts")
+		}
+	})
+
+	t.Run("delete in disabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		config.Enabled = false
+		c := NewReactionCache(config)
+
+		// Delete should not panic
+		c.DeleteEntityCounts("photo", "1")
+	})
+}
+
+// TestReactionCache_Clear tests the Clear method.
+func TestReactionCache_Clear(t *testing.T) {
+	t.Run("clear enabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Set some data
+		c.SetUserReaction("user1", "photo", "1", UserReaction{ReactionType: "LIKE", Timestamp: time.Now()})
+		c.SetUserReaction("user2", "photo", "2", UserReaction{ReactionType: "LOVE", Timestamp: time.Now()})
+		c.SetEntityCounts("photo", "1", EntityCounts{TotalReactions: 5})
+
+		// Clear
+		c.Clear()
+
+		// Verify all cleared
+		_, ok := c.GetUserReaction("user1", "photo", "1")
+		if ok {
+			t.Error("expected user1 reaction to be cleared")
+		}
+		_, ok = c.GetUserReaction("user2", "photo", "2")
+		if ok {
+			t.Error("expected user2 reaction to be cleared")
+		}
+		_, ok = c.GetEntityCounts("photo", "1")
+		if ok {
+			t.Error("expected entity counts to be cleared")
+		}
+	})
+
+	t.Run("clear disabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		config.Enabled = false
+		c := NewReactionCache(config)
+
+		// Clear should not panic
+		c.Clear()
+
+		// Verify disabled
+		if c.IsEnabled() {
+			t.Error("expected cache to be disabled")
+		}
+	})
+
+	t.Run("clear empty cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Clear empty cache should not panic
+		c.Clear()
+
+		stats := c.Stats()
+		if stats.Entries != 0 {
+			t.Errorf("expected 0 entries, got %d", stats.Entries)
+		}
+	})
+}
+
+// TestReactionCache_UserCacheStats tests the UserCacheStats method.
+func TestReactionCache_UserCacheStats(t *testing.T) {
+	t.Run("user stats in enabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Set user reactions
+		c.SetUserReaction("user1", "photo", "1", UserReaction{ReactionType: "LIKE", Timestamp: time.Now()})
+		c.SetUserReaction("user2", "photo", "2", UserReaction{ReactionType: "LOVE", Timestamp: time.Now()})
+
+		// Get user stats
+		stats := c.UserCacheStats()
+		if stats.Entries != 2 {
+			t.Errorf("expected 2 user entries, got %d", stats.Entries)
+		}
+
+		// Generate hits and misses
+		c.GetUserReaction("user1", "photo", "1") // hit
+		c.GetUserReaction("user3", "photo", "3") // miss
+
+		stats = c.UserCacheStats()
+		if stats.Hits != 1 {
+			t.Errorf("expected 1 hit, got %d", stats.Hits)
+		}
+		if stats.Misses != 1 {
+			t.Errorf("expected 1 miss, got %d", stats.Misses)
+		}
+	})
+
+	t.Run("user stats in disabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		config.Enabled = false
+		c := NewReactionCache(config)
+
+		stats := c.UserCacheStats()
+		if stats.Entries != 0 {
+			t.Errorf("expected 0 entries in disabled cache, got %d", stats.Entries)
+		}
+		if stats.Hits != 0 {
+			t.Errorf("expected 0 hits in disabled cache, got %d", stats.Hits)
+		}
+		if stats.Misses != 0 {
+			t.Errorf("expected 0 misses in disabled cache, got %d", stats.Misses)
+		}
+	})
+}
+
+// TestReactionCache_EntityCacheStats tests the EntityCacheStats method.
+func TestReactionCache_EntityCacheStats(t *testing.T) {
+	t.Run("entity stats in enabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Set entity counts
+		c.SetEntityCounts("photo", "1", EntityCounts{TotalReactions: 10})
+		c.SetEntityCounts("video", "1", EntityCounts{TotalReactions: 5})
+
+		// Get entity stats
+		stats := c.EntityCacheStats()
+		if stats.Entries != 2 {
+			t.Errorf("expected 2 entity entries, got %d", stats.Entries)
+		}
+
+		// Generate hits and misses
+		c.GetEntityCounts("photo", "1")  // hit
+		c.GetEntityCounts("photo", "2")  // miss
+
+		stats = c.EntityCacheStats()
+		if stats.Hits != 1 {
+			t.Errorf("expected 1 hit, got %d", stats.Hits)
+		}
+		if stats.Misses != 1 {
+			t.Errorf("expected 1 miss, got %d", stats.Misses)
+		}
+	})
+
+	t.Run("entity stats in disabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		config.Enabled = false
+		c := NewReactionCache(config)
+
+		stats := c.EntityCacheStats()
+		if stats.Entries != 0 {
+			t.Errorf("expected 0 entries in disabled cache, got %d", stats.Entries)
+		}
+		if stats.Hits != 0 {
+			t.Errorf("expected 0 hits in disabled cache, got %d", stats.Hits)
+		}
+		if stats.Misses != 0 {
+			t.Errorf("expected 0 misses in disabled cache, got %d", stats.Misses)
+		}
+	})
+}
+
+// TestReactionCache_Invalidation tests the InvalidateByEntity method in detail.
+func TestReactionCache_Invalidation(t *testing.T) {
+	t.Run("invalidate with user reactions only", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Set only user reactions, no entity counts
+		c.SetUserReaction("user1", "photo", "1", UserReaction{ReactionType: "LIKE", Timestamp: time.Now()})
+		c.SetUserReaction("user2", "photo", "1", UserReaction{ReactionType: "LOVE", Timestamp: time.Now()})
+
+		// Invalidate
+		c.InvalidateByEntity("photo", "1")
+
+		// Verify both reactions are gone
+		_, ok := c.GetUserReaction("user1", "photo", "1")
+		if ok {
+			t.Error("expected user1 reaction to be invalidated")
+		}
+		_, ok = c.GetUserReaction("user2", "photo", "1")
+		if ok {
+			t.Error("expected user2 reaction to be invalidated")
+		}
+	})
+
+	t.Run("invalidate with entity counts only", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Set only entity counts, no user reactions
+		c.SetEntityCounts("photo", "1", EntityCounts{TotalReactions: 10})
+
+		// Invalidate
+		c.InvalidateByEntity("photo", "1")
+
+		// Verify counts are gone
+		_, ok := c.GetEntityCounts("photo", "1")
+		if ok {
+			t.Error("expected entity counts to be invalidated")
+		}
+	})
+
+	t.Run("invalidate disabled cache", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		config.Enabled = false
+		c := NewReactionCache(config)
+
+		// Invalidate should not panic
+		c.InvalidateByEntity("photo", "1")
+	})
+
+	t.Run("invalidate non-existing entity", func(t *testing.T) {
+		config := DefaultReactionCacheConfig()
+		c := NewReactionCache(config)
+
+		// Set some data for other entities
+		c.SetUserReaction("user1", "photo", "1", UserReaction{ReactionType: "LIKE", Timestamp: time.Now()})
+
+		// Invalidate different entity
+		c.InvalidateByEntity("video", "999")
+
+		// Original data should remain
+		_, ok := c.GetUserReaction("user1", "photo", "1")
+		if !ok {
+			t.Error("expected user1 reaction to still exist")
+		}
+	})
+}
+
+// TestReactionCache_Concurrent tests concurrent operations on ReactionCache.
+func TestReactionCache_Concurrent(t *testing.T) {
+	config := DefaultReactionCacheConfig()
+	c := NewReactionCache(config)
+
+	done := make(chan bool)
+
+	// Concurrent sets
+	for i := 0; i < 10; i++ {
+		go func(n int) {
+			for j := 0; j < 50; j++ {
+				userID := string(rune('a' + n))
+				c.SetUserReaction(userID, "photo", "1", UserReaction{ReactionType: "LIKE", Timestamp: time.Now()})
+				c.GetUserReaction(userID, "photo", "1")
+			}
+			done <- true
+		}(i)
+	}
+
+	// Wait for all goroutines
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+
+	// Verify stats
+	stats := c.UserCacheStats()
+	if stats.Hits == 0 {
+		t.Error("expected some hits from concurrent operations")
+	}
+}
+
+// TestEntityCounts_EmptyCounts tests handling of empty counts map.
+func TestEntityCounts_EmptyCounts(t *testing.T) {
+	config := DefaultReactionCacheConfig()
+	c := NewReactionCache(config)
+
+	counts := EntityCounts{
+		CountsByType:   map[string]int64{},
+		TotalReactions: 0,
+		Timestamp:      time.Now(),
+	}
+
+	c.SetEntityCounts("photo", "1", counts)
+
+	got, ok := c.GetEntityCounts("photo", "1")
+	if !ok {
+		t.Fatal("expected to find entity counts")
+	}
+	if got.TotalReactions != 0 {
+		t.Errorf("expected total 0, got %d", got.TotalReactions)
+	}
+	if len(got.CountsByType) != 0 {
+		t.Errorf("expected empty counts map, got %d entries", len(got.CountsByType))
+	}
+}
