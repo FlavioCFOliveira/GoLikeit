@@ -25,6 +25,7 @@ User Request → spec-orchestrator → specification/ → go-elite-developer →
 | [audit_logging.md](audit_logging.md) | Configurable audit logging with NullAuditor default |
 | [event_system.md](event_system.md) | Event system for reaction state changes and system events |
 | [rate_limiting.md](rate_limiting.md) | Configurable per-user rate limiting using sliding window algorithm |
+| [test_strategy.md](test_strategy.md) | Functional strategy for testing and validating implementations |
 
 ## Core Concepts
 
