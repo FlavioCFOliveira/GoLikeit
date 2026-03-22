@@ -40,15 +40,25 @@ Security is not an afterthought—it is a fundamental design principle that infl
 **Description:** The system shall validate all inputs to prevent injection attacks and data corruption.
 
 **Requirements:**
-- All string inputs (user_id, entity_type, entity_id) shall be validated for length and content
-- Maximum lengths shall be enforced (user_id: 256 chars, entity_type: 64 chars, entity_id: 256 chars)
-- Entity type identifiers shall match allowed character pattern: [a-zA-Z0-9_-]+
+- All string inputs (user_id, entity_type, entity_id, reaction_type) shall be validated for length and content
+- Maximum lengths shall be enforced (user_id: 256 chars, entity_type: 64 chars, entity_id: 256 chars, reaction_type: 64 chars)
+- Entity type identifiers shall match allowed character pattern: `[a-zA-Z0-9_-]+`
+- Reaction type identifiers shall match allowed character pattern: `[A-Z0-9_-]+` (uppercase only)
 - Null bytes and control characters shall be rejected
 - Unicode normalization shall not be performed (identifiers are treated as opaque byte sequences)
+
+**Reaction Type Validation:**
+- Reaction types must be configured during module initialization
+- All configured reaction types are validated at startup against pattern `^[A-Z0-9_-]+$`
+- If any reaction type fails validation, module initialization fails
+- Empty reaction type lists are rejected
+- Duplicate reaction types in configuration are rejected
+- Runtime reaction type validation checks against the configured registry
 
 **Error Behavior:**
 - Invalid inputs shall be rejected before any storage operations
 - Error messages shall indicate which field failed validation without exposing internal details
+- Module initialization fails if reaction type configuration is invalid
 
 ### Requirement 2: SQL Injection Prevention
 
@@ -59,6 +69,7 @@ Security is not an afterthought—it is a fundamental design principle that infl
 - String concatenation for query construction is prohibited
 - User-provided identifiers shall never be interpolated into SQL
 - Database-specific escaping shall be handled by the driver
+- Reaction types (even though validated) shall be parameterized
 
 **Verification:**
 - All storage implementations shall be reviewed for proper parameterization
@@ -73,6 +84,7 @@ Security is not an afterthought—it is a fundamental design principle that infl
 - Internal file paths shall not be exposed
 - Stack traces shall not be included in exported errors (may be logged internally)
 - Query details shall not be exposed in error messages
+- Configured reaction types may be exposed (they are not sensitive)
 
 **Logging Guidelines:**
 - Internal logging may include query details at DEBUG level
@@ -89,8 +101,8 @@ Security is not an afterthought—it is a fundamental design principle that infl
 - Memory usage for large result sets shall be controlled
 
 **Configuration:**
-- Default page size shall be defined (e.g., 100 records)
-- Maximum page size shall be enforced (e.g., 1000 records)
+- Default page size shall be defined (e.g., 20 records)
+- Maximum page size shall be enforced (e.g., 100 records)
 - Connection pool limits shall be configurable with safe defaults
 
 ### Requirement 5: Concurrent Access Safety
@@ -102,6 +114,7 @@ Security is not an afterthought—it is a fundamental design principle that infl
 - Database transactions shall use appropriate isolation levels
 - Concurrent modification of the same user-entity pair shall be handled safely
 - Count updates shall be atomic with reaction record changes
+- Replacement operations shall be atomic (decrement old type, increment new type)
 
 **Isolation Level:**
 - Default isolation level: READ COMMITTED (configurable)
@@ -123,10 +136,10 @@ Security is not an afterthought—it is a fundamental design principle that infl
 
 ### Requirement 7: Audit Trail Support
 
-**Description:** The system shall maintain a mandatory, immutable audit log of all reaction operations.
+**Description:** The system shall maintain a mandatory, immutable audit log of all reaction operations. Audit logging is an architectural component that is always present; persistence is configurable.
 
 **Requirements:**
-- All reaction operations (LIKE, UNLIKE, DISLIKE, UNDISLIKE, conversions) create audit entries
+- All reaction operations (ADD, REPLACE, REMOVE) create audit entries
 - Audit entries are immutable - cannot be modified or deleted after creation
 - The audit package exposes only Insert and Get operations; no Delete or Update
 - Audit logs include: operation type, user_id, entity_type, entity_id, reaction_type, previous_reaction, timestamp
@@ -134,15 +147,34 @@ Security is not an afterthought—it is a fundamental design principle that infl
 - Audit storage may be configured independently from reaction storage
 
 **Configuration:**
-- Audit logging is mandatory and cannot be disabled
-- Audit entries are persisted to the configured audit storage
+- Audit logging is **architecturally mandatory** - the audit system is always initialized
+- When audit storage is configured: entries are persisted (Persistent Auditor)
+- When no audit storage is configured: NullAuditor is used as fallback (no persistence)
+- Consuming application cannot "disable" audit logging, only choose persistence method
 - Log format is structured (JSON or key-value pairs)
+
+### Requirement 8: Configuration Security
+
+**Description:** The system shall ensure secure configuration handling.
+
+**Requirements:**
+- Reaction type configuration must be provided during initialization
+- All reaction types are validated before module becomes operational
+- Module fails to initialize if configuration is invalid (fail secure)
+- No runtime modification of configured reaction types
+- Configuration is immutable after initialization
+
+**Validation:**
+- Pattern: `^[A-Z0-9_-]+$` (uppercase letters, digits, hyphens, underscores)
+- Length: 1-64 characters
+- At least one reaction type required
+- No duplicates allowed
 
 ## Constraints and Limitations
 
 1. **No Authentication:** The system does not authenticate users. User authentication is the responsibility of the consuming application.
 
-2. **No Authorization:** The system does not enforce authorization policies (e.g., "user A cannot like entity belonging to user B"). Authorization is the responsibility of the consuming application.
+2. **No Authorization:** The system does not enforce authorization policies (e.g., "user A cannot react to entity belonging to user B"). Authorization is the responsibility of the consuming application.
 
 3. **No Encryption at Rest:** The system does not provide encryption for stored data. Database-level encryption is the responsibility of the database administrator.
 
@@ -150,9 +182,11 @@ Security is not an afterthought—it is a fundamental design principle that infl
 
 5. **No Rate Limiting:** The system does not implement rate limiting. Rate limiting is the responsibility of the consuming application.
 
-6. **Audit Immutability:** Audit log entries cannot be deleted or modified through any API, ensuring tamper-proof audit trails.
+6. **No GDPR Compliance:** The system does not implement GDPR-specific features (right to be forgotten, data portability, consent tracking). GDPR compliance is the responsibility of the consuming application. The module provides raw data access through standard APIs; the application is responsible for implementing data subject rights and consent management.
 
-7. **Security-First Overrides:** In cases where security conflicts with convenience or performance, security takes precedence unless explicitly overridden with clear documentation of risks.
+7. **Audit Immutability:** Audit log entries cannot be deleted or modified through any API, ensuring tamper-proof audit trails.
+
+8. **Security-First Overrides:** In cases where security conflicts with convenience or performance, security takes precedence unless explicitly overridden with clear documentation of risks.
 
 ## Security Checklist
 
@@ -164,7 +198,8 @@ Security is not an afterthought—it is a fundamental design principle that infl
 | Resource limits | Pagination, batch limits | Integration tests |
 | Concurrent safety | Transactions, synchronization | Race detector, load tests |
 | Credential handling | No storage, pass-through | Code review |
-| Audit logging | Optional structured logging | Logging tests |
+| Audit logging | Mandatory structured logging | Logging tests |
+| Configuration validation | Pattern matching, length checks | Unit tests for config |
 
 ## Relationships with Other Functional Blocks
 
@@ -179,20 +214,23 @@ Security is not an afterthought—it is a fundamental design principle that infl
 | 2026-03-21 | Initial | First version of security policies specification |
 | 2026-03-21 | Update | Updated Requirement 7 to reflect mandatory, immutable audit logging with insert/get-only operations |
 | 2026-03-21 | Update | Added Security-First Policy section with security-by-design principles |
+| 2026-03-22 | Update | Added Requirement 8 (Configuration Security) for reaction type validation; updated input validation for reaction types |
 
 ## Acceptance Criteria
 
 1. **AC1:** All string inputs are validated for length before processing
-2. **AC2:** Entity type identifiers are validated against allowed character pattern
-3. **AC3:** All database queries use parameterized statements
-4. **AC4:** Error messages do not expose database credentials or internal paths
-5. **AC5:** Query results support pagination with configurable page sizes
-6. **AC6:** Maximum page size is enforced to prevent unbounded queries
-7. **AC7:** Concurrent modification of the same user-entity pair is handled safely
-8. **AC8:** The system does not store database credentials
-9. **AC9:** All state-changing operations create immutable audit entries
-10. **AC10:** Audit logging is mandatory and includes complete operation metadata
-11. **AC11:** No API exists to delete or modify audit entries
-12. **AC12:** Security takes precedence over convenience in design decisions
-13. **AC13:** All configuration defaults are secure by default
-14. **AC14:** Security vulnerabilities are treated as critical bugs
+2. **AC2:** Entity type identifiers are validated against allowed character pattern `[a-zA-Z0-9_-]+`
+3. **AC3:** Reaction type identifiers are validated against pattern `[A-Z0-9_-]+` at initialization
+4. **AC4:** Module initialization fails if reaction type configuration is invalid
+5. **AC5:** All database queries use parameterized statements
+6. **AC6:** Error messages do not expose database credentials or internal paths
+7. **AC7:** Query results support pagination with configurable page sizes
+8. **AC8:** Maximum page size is enforced to prevent unbounded queries
+9. **AC9:** Concurrent modification of the same user-entity pair is handled safely
+10. **AC10:** The system does not store database credentials
+11. **AC11:** All state-changing operations create immutable audit entries
+12. **AC12:** Audit logging is mandatory and includes complete operation metadata
+13. **AC13:** No API exists to delete or modify audit entries
+14. **AC14:** Security takes precedence over convenience in design decisions
+15. **AC15:** All configuration defaults are secure by default
+16. **AC16:** Security vulnerabilities are treated as critical bugs

@@ -40,7 +40,7 @@ A **Reaction Target** is the unique combination of `(entity_type, entity_id)` th
 **Constraints:**
 - Entity type identifiers shall be non-empty strings
 - Entity type identifiers shall have a maximum length of 64 characters
-- Entity type identifiers shall consist of alphanumeric characters, underscores, and hyphens
+- Entity type identifiers shall consist of alphanumeric characters, underscores, and hyphens: `[a-zA-Z0-9_-]+`
 - The system shall not maintain a registry of valid entity types; validation is purely syntactic
 
 **Behavior:**
@@ -76,11 +76,11 @@ A **Reaction Target** is the unique combination of `(entity_type, entity_id)` th
 **Requirements:**
 - The combination of entity_type and entity_id shall uniquely identify a Reaction Target
 - Reactions on different Reaction Targets shall be completely isolated
-- Each Reaction Target maintains its own independent reaction counts and state
+- Each Reaction Target maintains its own independent reaction counts and state per reaction type
 
 **Behavior:**
-- LIKE on Reaction Target `("photo", "123")` is independent of LIKE on `("article", "123")`
-- LIKE on Reaction Target `("photo", "123")` is independent of LIKE on `("photo", "456")`
+- Reaction on Reaction Target `("photo", "123")` is independent of reaction on `("article", "123")`
+- Reaction on Reaction Target `("photo", "123")` is independent of reaction on `("photo", "456")`
 - Query operations shall require both entity_type and entity_id to identify a Reaction Target
 - Reaction Targets are the atomic unit of reaction aggregation
 
@@ -89,8 +89,8 @@ A **Reaction Target** is the unique combination of `(entity_type, entity_id)` th
 **Description:** All reaction operations shall work uniformly regardless of Reaction Target composition.
 
 **Requirements:**
-- LIKE, UNLIKE, DISLIKE, and UNDISLIKE operations shall behave identically for all Reaction Targets
-- Count aggregation shall be available per Reaction Target
+- AddReaction, RemoveReaction, and query operations shall behave identically for all Reaction Targets
+- Count aggregation shall be available per Reaction Target (per reaction type)
 - Cross-Reaction-Target aggregation is not required
 
 **Behavior:**
@@ -138,6 +138,7 @@ A **Reaction Target** is the unique combination of `(entity_type, entity_id)` th
 |------|--------|-------------|
 | 2026-03-21 | Initial | First version of entity association specification |
 | 2026-03-21 | Update | Introduced Reaction Target concept; updated all requirements to use Reaction Target terminology |
+| 2026-03-22 | Update | Updated to reflect abstract reaction model - counts per reaction type |
 
 ## Acceptance Criteria
 

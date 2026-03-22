@@ -4,77 +4,214 @@
 
 The system shall expose a public API that allows consuming applications to integrate reaction functionality. The API is library-based (Go package) rather than network-based, providing programmatic access to all reaction capabilities through idiomatic Go interfaces.
 
+The module is reaction-type agnostic. All reaction types are defined by the consuming application during initialization through configuration.
+
 ## Functional Requirements
 
-### Requirement 1: Public API Surface
+### Requirement 1: Reaction Type Configuration
 
-**Description:** The system shall expose a clean, idiomatic Go API for all reaction operations.
+**Description:** The system shall accept reaction type configuration during client initialization.
 
-**Core Operations:**
-- Like(ctx, user_id, entity_type, entity_id) error
-- Unlike(ctx, user_id, entity_type, entity_id) error
-- Dislike(ctx, user_id, entity_type, entity_id) error
-- Undislike(ctx, user_id, entity_type, entity_id) error
+**Configuration Interface:**
+```go
+// ReactionConfig defines the reaction types supported by the module
+type ReactionConfig struct {
+    // ReactionTypes is the list of allowed reaction types
+    // Each type must match pattern: ^[A-Z0-9_-]+$
+    // Minimum 1 type required
+    ReactionTypes []string
+}
+```
+
+**Validation Requirements:**
+- Each reaction type must match pattern `^[A-Z0-9_-]+$`
+- Each reaction type must be 1-64 characters
+- Duplicate reaction types are rejected
+- Empty reaction type list is rejected
+- Validation occurs during `New()` - module fails to initialize if invalid
+
+**Configuration Pattern:**
+```go
+// Configuration with custom reaction types
+client, err := golikeit.New(golikeit.Config{
+    DatabaseURL: "postgres://user:pass@localhost/reactions",
+    ReactionTypes: []string{"LIKE", "DISLIKE", "LOVE", "ANGRY"},
+})
+```
+
+### Requirement 2: Core Reaction Operations
+
+**Description:** The system shall provide operations for managing user reactions.
+
+**Operations:**
+
+```go
+// AddReaction adds or replaces a user's reaction on a Reaction Target
+// If user already has a reaction, it is replaced with the new type
+// Returns: isReplacement (true if previous reaction existed), error
+func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, reactionType string) (isReplacement bool, err error)
+
+// RemoveReaction removes the user's current reaction from a Reaction Target
+// Returns error if no reaction exists
+func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityID string) error
+
+// GetUserReaction retrieves the current reaction for a user on a Reaction Target
+// Returns: reactionType (empty string if none), error
+func (c *Client) GetUserReaction(ctx context.Context, userID, entityType, entityID string) (reactionType string, err error)
+
+// HasUserReaction checks if user has any reaction on a Reaction Target
+// Returns: true if user has a reaction, false otherwise
+func (c *Client) HasUserReaction(ctx context.Context, userID, entityType, entityID string) (bool, error)
+
+// HasUserReactionType checks if user has a specific reaction type on a Reaction Target
+// Returns: true if user has the specified reaction type, false otherwise
+func (c *Client) HasUserReactionType(ctx context.Context, userID, entityType, entityID, reactionType string) (bool, error)
+```
+
+### Requirement 3: Query Operations
+
+**Description:** The system shall provide query operations for retrieving reaction data.
 
 **Query Operations:**
-- GetUserReaction(ctx, user_id, entity_type, entity_id) (ReactionState, error)
-- GetEntityCounts(ctx, entity_type, entity_id) (ReactionCounts, error)
-- GetUserReactions(ctx, user_id, pagination) (PaginatedResult[Reaction], error)
-- GetEntityReactions(ctx, entity_type, entity_id, pagination) (PaginatedResult[Reaction], error)
-- GetUserLikes(ctx, user_id, pagination) (PaginatedResult[EntityTarget], error) - Returns paginated entities liked by user
-- GetUserDislikes(ctx, user_id, pagination) (PaginatedResult[EntityTarget], error) - Returns paginated entities disliked by user
-- GetEntityReactionsWithUsers(ctx, entity_type, entity_id, options) (EntityReactionDetail, error) - Consolidated view with counts and recent users
-- **HasUserLiked(ctx, user_id, entity_type, entity_id) (bool, error)** - Ultra-fast check if user liked target
-- **HasUserDisliked(ctx, user_id, entity_type, entity_id) (bool, error)** - Ultra-fast check if user disliked target
 
-**Consolidated Query Operations:**
-- **EntityReactionDetail** provides:
-  - Total likes count
-  - Total dislikes count
-  - Last N users who liked (configurable N, default 10)
-  - Last N users who disliked (configurable N, default 10)
-  - Timestamps of most recent reactions
+```go
+// GetEntityReactionCounts retrieves the count of each reaction type for a Reaction Target
+// Returns: map[reactionType]count, totalCount, error
+func (c *Client) GetEntityReactionCounts(ctx context.Context, entityType, entityID string) (counts map[string]int64, total int64, err error)
 
-**Requirements:**
-- All query operations return complete, consolidated data in a single call
-- No separate calls required to get counts and user lists
-- **Pagination required** for queries that may return more than 50 records
-- Options parameter allows configuring N (number of recent users to return)
+// GetEntityReactionDetail retrieves consolidated reaction data for a Reaction Target
+// Includes counts and recent users per reaction type
+func (c *Client) GetEntityReactionDetail(ctx context.Context, entityType, entityID string, options ReactionDetailOptions) (EntityReactionDetail, error)
+
+// GetUserReactions retrieves all reactions for a user
+// Returns paginated list of reactions with reaction type
+func (c *Client) GetUserReactions(ctx context.Context, userID string, pagination Pagination) (PaginatedResult[UserReaction], error)
+
+// GetUserReactionsByType retrieves reactions of a specific type for a user
+func (c *Client) GetUserReactionsByType(ctx context.Context, userID, reactionType string, pagination Pagination) (PaginatedResult[UserReaction], error)
+
+// GetEntityReactions retrieves all reactions on a Reaction Target
+func (c *Client) GetEntityReactions(ctx context.Context, entityType, entityID string, pagination Pagination) (PaginatedResult[EntityReaction], error)
+
+// GetEntityReactionsByType retrieves reactions of a specific type on a Reaction Target
+func (c *Client) GetEntityReactionsByType(ctx context.Context, entityType, entityID, reactionType string, pagination Pagination) (PaginatedResult[EntityReaction], error)
+```
+
+**Reaction Detail Options:**
+```go
+type ReactionDetailOptions struct {
+    // MaxRecentUsers is the number of recent users to return per reaction type
+    // Default: 10, Maximum: 100
+    MaxRecentUsers int
+}
+
+// EntityReactionDetail provides consolidated reaction data
+type EntityReactionDetail struct {
+    EntityType    string                          // Type of entity
+    EntityID      string                          // Entity identifier
+    TotalReactions int64                          // Total reactions across all types
+    CountsByType  map[string]int64                // Count per reaction type
+    RecentUsers   map[string][]RecentUserReaction // Recent users per reaction type
+    LastReaction  *time.Time                      // Timestamp of last reaction (if any)
+}
+
+type RecentUserReaction struct {
+    UserID    string    // User who reacted
+    CreatedAt time.Time // When the reaction was created
+}
+```
+
+### Requirement 4: Bulk Operations
+
+**Description:** The API shall support bulk operations for efficient batch processing.
 
 **Bulk Operations:**
-- GetUserReactionsBulk(ctx, user_id, entityTargets) (map[EntityTarget]ReactionState, error)
-- GetEntityCountsBulk(ctx, entityTargets) (map[EntityTarget]ReactionCounts, error)
-- GetMultipleUserReactions(ctx, userIDs, entity_type, entity_id) (map[string]ReactionState, error)
+
+```go
+// GetUserReactionsBulk retrieves reaction states for multiple Reaction Targets for a single user
+// Input: user_id, slice of (entity_type, entity_id) tuples
+// Output: Map of entity target to reaction type (empty string if no reaction)
+func (c *Client) GetUserReactionsBulk(ctx context.Context, userID string, targets []EntityTarget) (map[EntityTarget]string, error)
+
+// GetEntityCountsBulk retrieves counts for multiple Reaction Targets
+// Input: Slice of (entity_type, entity_id) tuples
+// Output: Map of entity target to reaction counts
+func (c *Client) GetEntityCountsBulk(ctx context.Context, targets []EntityTarget) (map[EntityTarget]EntityCounts, error)
+
+// GetMultipleUserReactions retrieves reactions from multiple users for a single Reaction Target
+// Input: Slice of user_ids, entity_type, entity_id
+// Output: Map of user_id to reaction type
+func (c *Client) GetMultipleUserReactions(ctx context.Context, userIDs []string, entityType, entityID string) (map[string]string, error)
+```
+
+**Entity Counts Structure:**
+```go
+type EntityCounts struct {
+    EntityType     string
+    EntityID       string
+    CountsByType   map[string]int64 // Count per reaction type
+    TotalReactions int64
+}
+```
+
+### Requirement 5: Client Initialization
+
+**Description:** The system shall provide a client constructor that accepts configuration including reaction types.
+
+**Configuration:**
+```go
+type Config struct {
+    DatabaseURL   string
+    ReactionTypes []string        // Required: at least one reaction type
+    CacheConfig   *CacheConfig    // Optional
+    AuditConfig   *AuditConfig    // Optional
+    RateLimitConfig *RateLimitConfig // Optional
+}
+```
 
 **Requirements:**
-- All operations accept a context.Context for cancellation and timeouts
-- All operations return (result, error) tuples
-- Error types are exported for programmatic error handling
-- Types are exported with clear documentation
-
-### Requirement 2: Client Initialization
-
-**Description:** The system shall provide a client constructor that accepts configuration.
-
-**Inputs:**
-- Database configuration (type, connection string, pool settings)
-- Optional: Cache configuration (enabled, TTL, max size)
-- Optional: Logger interface
-- Optional: Metrics collector interface
-- Optional: Custom validator functions
-
-**Outputs:**
-- Client instance implementing the public API interface
-- Initialization error if configuration is invalid
-
-**Requirements:**
-- Client construction shall validate configuration
-- Invalid configurations shall return descriptive errors
+- Client construction shall validate reaction type configuration
+- Invalid reaction types shall return descriptive errors
+- Empty reaction type list shall return error
 - The client shall be safe for concurrent use
 - Resources shall be properly initialized during construction
-- Cache layer shall be initialized if enabled
 
-### Requirement 3: Context Support
+### Requirement 6: Error Types
+
+**Description:** The system shall export typed errors for programmatic handling.
+
+**Error Types:**
+```go
+var (
+    // ErrInvalidInput: Input validation failed
+    ErrInvalidInput = errors.New("invalid input")
+
+    // ErrReactionNotFound: Requested reaction does not exist
+    ErrReactionNotFound = errors.New("reaction not found")
+
+    // ErrStorageUnavailable: Database connection or query failed
+    ErrStorageUnavailable = errors.New("storage unavailable")
+
+    // ErrInvalidReactionType: Reaction type not in configured registry
+    ErrInvalidReactionType = errors.New("invalid reaction type")
+
+    // ErrInvalidReactionFormat: Reaction type has invalid format
+    ErrInvalidReactionFormat = errors.New("reaction type must match [A-Z0-9_-]+")
+
+    // ErrNoReactionTypes: Reaction type list is empty
+    ErrNoReactionTypes = errors.New("at least one reaction type required")
+
+    // ErrDuplicateReactionType: Duplicate reaction type in configuration
+    ErrDuplicateReactionType = errors.New("duplicate reaction type")
+)
+```
+
+**Requirements:**
+- Errors shall be comparable using errors.Is()
+- Error messages shall be descriptive and actionable
+- Sensitive information shall not be exposed in error messages
+
+### Requirement 7: Context Support
 
 **Description:** All API methods shall accept context.Context for operation control.
 
@@ -89,44 +226,7 @@ The system shall expose a public API that allows consuming applications to integ
 - Expired timeouts result in termination with context.DeadlineExceeded error
 - Resources acquired before cancellation shall be released
 
-### Requirement 4: Error Types
-
-**Description:** The system shall export typed errors for programmatic handling.
-
-**Error Types:**
-- ErrInvalidInput: Input validation failed
-- ErrDuplicateReaction: User already has an active LIKE or DISLIKE on the Reaction Target (idempotency violation)
-- ErrReactionNotFound: Requested reaction does not exist
-- ErrStorageUnavailable: Database connection or query failed
-- ErrInvalidReactionType: Unknown reaction type specified
-
-**Duplicate Reaction Error Details:**
-- **ErrDuplicateLike:** Returned when attempting to LIKE a Reaction Target that the user already LIKES
-- **ErrDuplicateDislike:** Returned when attempting to DISLIKE a Reaction Target that the user already DISLIKES
-- Both errors indicate that no state change occurred (idempotency preserved)
-- The error shall include the Reaction Target identifier and current reaction state
-
-**Requirements:**
-- Errors shall be comparable using errors.Is()
-- Error messages shall be descriptive and actionable
-- Sensitive information shall not be exposed in error messages
-- Duplicate reaction errors shall clearly indicate the existing reaction state
-
-### Requirement 5: Configuration Types
-
-**Description:** The system shall export configuration types for setup.
-
-**Configuration Types:**
-- DatabaseConfig: Database connection parameters
-- PoolConfig: Connection pool settings
-- ReactionConfig: Reaction type definitions and behaviors
-
-**Requirements:**
-- Configuration types shall use struct tags for validation
-- Default values shall be provided where appropriate
-- Configuration shall be immutable after client construction
-
-### Requirement 6: Shutdown and Cleanup
+### Requirement 8: Shutdown and Cleanup
 
 **Description:** The system shall provide graceful shutdown capabilities.
 
@@ -142,7 +242,7 @@ The system shall expose a public API that allows consuming applications to integ
 - Resources are released
 - Subsequent API calls return errors after Close()
 
-### Requirement 7: Thread Safety
+### Requirement 9: Thread Safety
 
 **Description:** The client shall be safe for concurrent use.
 
@@ -152,16 +252,14 @@ The system shall expose a public API that allows consuming applications to integ
 - Internal state shall be protected from race conditions
 - Concurrent operations shall not corrupt data
 
-### Requirement 8: Simple Configuration API
+### Requirement 10: Simple Configuration API
 
 **Description:** The module shall expose a simple, intuitive API for users to configure and use.
 
 **Requirements:**
-- **Minimal Setup:** Basic configuration requires only essential parameters (storage connection)
-- **Sensible Defaults:** All optional parameters have sensible defaults; zero-config for common cases
-- **Fluent Interface:** Optional configuration uses builder pattern or functional options for readability
-- **Single Entry Point:** One constructor/function to create a fully configured client
-- **Clear Documentation:** Every configuration option is documented with examples
+- **Minimal Setup:** Basic configuration requires database connection and at least one reaction type
+- **Sensible Defaults:** All optional parameters have sensible defaults
+- **Fluent Interface:** Optional configuration uses functional options for readability
 - **Validation on Build:** Configuration errors are caught at initialization time with clear messages
 
 **Configuration Pattern:**
@@ -169,24 +267,19 @@ The system shall expose a public API that allows consuming applications to integ
 // Simple - minimal configuration
 client, err := golikeit.New(golikeit.Config{
     DatabaseURL: "postgres://user:pass@localhost/reactions",
+    ReactionTypes: []string{"LIKE", "DISLIKE"},
 })
 
 // Advanced - with options
 client, err := golikeit.New(
     golikeit.WithDatabaseURL("postgres://user:pass@localhost/reactions"),
+    golikeit.WithReactionTypes("LIKE", "DISLIKE", "LOVE", "ANGRY"),
+    golikeit.WithCache(golikeit.CacheConfig{Enabled: true, TTL: 5 * time.Minute}),
     golikeit.WithAuditDatabaseURL("postgres://user:pass@localhost/audit"),
-    golikeit.WithMaxConnections(100),
-    golikeit.WithLogger(logger),
 )
 ```
 
-**Rationale:**
-- Reduces cognitive load for new users
-- Enables quick adoption with minimal boilerplate
-- Supports advanced use cases through progressive disclosure
-- Follows Go idioms for library design
-
-### Requirement 9: Caching Layer
+### Requirement 11: Caching Layer
 
 **Description:** The system shall provide an optional caching layer to avoid database access and improve response times.
 
@@ -202,54 +295,42 @@ client, err := golikeit.New(
 - **Cache Keys:** Composite keys including user_id, entity_type, entity_id
 
 **Cache Invalidation:**
-- Cache entries are invalidated on reaction state changes
-- Write operations (Like, Unlike, Dislike, Undislike) trigger invalidation
-- Bulk invalidation supported for entity-level cache clearing
+- Cache invalidation occurs at **Reaction Target granularity** (user_id + entity_type + entity_id)
+- When user_123 calls AddReaction("photo", "photo_456", "LIKE"), only cache entries for (user_123, "photo", "photo_456") are invalidated
+- **Invalidation Scope:**
+  - User reaction cache entry for the specific user and entity
+  - Entity counts cache entry for the specific entity
+  - User reaction lists are NOT invalidated (rebuild on next query)
+- **Bulk Invalidation:** Operations affecting multiple entities trigger individual invalidations for each affected Reaction Target
 - TTL-based expiration for automatic stale data removal
 
 **Requirements:**
 - Cache must be thread-safe for concurrent access
 - Cache misses shall transparently fall back to database
 - Cache hit/miss metrics shall be exposed
-- Cache warming not required; lazy loading acceptable
 
-**Rationale:**
-- Reduces database load for read-heavy workloads
-- Improves response times for frequently accessed data
-- Critical for high-concurrency scenarios
+### Requirement 12: Pagination Support
 
-### Requirement 10: Bulk Operations
+**Description:** All query operations shall use a consistent pagination mechanism with configurable parameters.
 
-**Description:** The API shall support bulk operations for efficient batch processing.
+**Pagination Configuration:**
+```go
+type PaginationConfig struct {
+    // Default number of records per page
+    DefaultLimit int // Default: 20, configurable
 
-**Bulk Operations:**
-- **GetUserReactionsBulk:** Retrieve reaction states for multiple entity targets for a single user
-  - Input: user_id, slice of (entity_type, entity_id) tuples
-  - Output: Map of entity target to reaction state
+    // Maximum allowed records per page (hard upper bound)
+    MaxLimit int // Default: 100, configurable
 
-- **GetEntityCountsBulk:** Retrieve counts for multiple entity targets
-  - Input: Slice of (entity_type, entity_id) tuples
-  - Output: Map of entity target to reaction counts
-
-- **GetMultipleUserReactions:** Retrieve reactions from multiple users for a single entity
-  - Input: Slice of user_ids, entity_type, entity_id
-  - Output: Map of user_id to reaction state
-
-**Requirements:**
-- Bulk operations shall minimize database round trips
-- Bulk operations shall respect context cancellation
-- Maximum batch size shall be enforced (configurable, default 100)
-- Partial failures shall return successful results with error indicators
-- Bulk operations shall leverage cache when available
-
-### Requirement 11: Pagination Support
-
-**Description:** All query operations that may return more than 50 records shall use a consistent pagination mechanism.
+    // Maximum offset allowed (prevents excessive pagination)
+    MaxOffset int // Default: 10000, configurable
+}
+```
 
 **Pagination Model (Limit-Offset):**
 ```go
 type Pagination struct {
-    Limit  int // Number of records requested (max 100)
+    Limit  int // Number of records requested (max from config)
     Offset int // Starting position (0-based)
 }
 
@@ -258,7 +339,7 @@ type PaginatedResult[T] struct {
     Total       int64 // Total records matching query
     TotalPages  int   // Total number of pages (calculated from Total/Limit)
     CurrentPage int   // Current page number (1-based, calculated from Offset/Limit)
-    Limit       int   // Records per page (as requested)
+    Limit       int   // Records per page (as requested, capped at MaxLimit)
     Offset      int   // Current offset position
     HasNext     bool  // Whether there are more records after this page
     HasPrev     bool  // Whether there are records before this page
@@ -266,71 +347,18 @@ type PaginatedResult[T] struct {
 ```
 
 **Limit-Offset Principle:**
-- **Limit:** Indicates how many records are requested (e.g., 20)
-- **Offset:** Indicates the starting position (0-based, e.g., 0 for first page, 20 for second page)
+- **Limit:** Indicates how many records are requested (e.g., 20), capped at MaxLimit
+- **Offset:** Indicates the starting position (0-based, e.g., 0 for first page, 20 for second page), capped at MaxOffset
 - **Page Calculation:** Page = (Offset / Limit) + 1
 - **Total Pages:** Calculated as ceil(Total / Limit)
+- **Default Behavior:** If no pagination specified, uses DefaultLimit
 
 **Requirements:**
-- **Threshold:** Pagination is mandatory for queries potentially returning >50 records
-- **Default Limit:** 20 records per request (configurable)
-- **Maximum Limit:** 100 records per request (enforced)
-- **Offset:** 0-based (first record starts at 0)
-- **Page Calculation:** Current page derived from Offset/Limit (Page = Offset/Limit + 1)
-- **Consistent Ordering:** Results ordered by timestamp descending (newest first)
-- **Total Count:** Include total record count and total pages for UI pagination controls
-- **Cursor Support:** Optional cursor-based pagination for very large datasets (>10,000 items)
-
-**Affected Operations:**
-- GetUserReactions (user's reaction history)
-- GetEntityReactions (all reactions on an entity)
-- GetUserLikes (user's liked entities)
-- GetUserDislikes (user's disliked entities)
-
-**Rationale:**
-- Prevents memory issues with large result sets
-- Provides predictable performance
-- Enables efficient UI pagination
-- Consistent experience across all list queries
-
-### Requirement 12: Fast Reaction Check Operations
-
-**Description:** The API shall provide ultra-fast, efficient methods to check if a user has a specific reaction on a target.
-
-**Fast Check Operations:**
-- **HasUserLiked(ctx, user_id, entity_type, entity_id) (bool, error)**
-  - Returns: true if user has LIKED the target, false otherwise
-  - Optimized for speed; minimal database overhead
-  - Uses cache when available
-  - Single key lookup in most backends
-
-- **HasUserDisliked(ctx, user_id, entity_type, entity_id) (bool, error)**
-  - Returns: true if user has DISLIKED the target, false otherwise
-  - Same optimization as HasUserLiked
-
-**Performance Requirements:**
-- Response time: <5ms (p95) when cached
-- Response time: <10ms (p95) when not cached
-- Single database lookup (no joins, no aggregations)
-- Returns boolean only (no additional data fetched)
-
-**Implementation Strategy:**
-- **Cache-First:** Check in-memory cache before database
-- **Key Design:** Use composite key (user_id:entity_type:entity_id) for O(1) lookups
-- **Database:** Use primary key or covering index lookup
-- **No Object Mapping:** Raw database value to boolean, no struct instantiation
-
-**Use Cases:**
-- UI button state ("already liked" indicator)
-- Permission checks ("can like" validation)
-- Batch processing requiring quick state verification
-- Real-time features requiring fast feedback
-
-**Rationale:**
-- UI often needs to check if current user liked content (for heart icon state)
-- GetUserReaction returns full state; HasUserLiked is optimized boolean check
-- Critical for high-traffic scenarios with many concurrent users
-- Reduces unnecessary data transfer
+- **Mandatory Pagination:** All list queries return paginated results (no unbounded queries)
+- **Configurable Defaults:** DefaultLimit is externally configurable
+- **Enforced Maximum:** MaxLimit is externally configurable and enforced
+- **Offset Protection:** MaxOffset prevents excessive pagination depth
+- **Consistent Ordering:** Results ordered by timestamp descending (newest first, based on reaction created_at)
 
 ## Constraints and Limitations
 
@@ -342,11 +370,13 @@ type PaginatedResult[T] struct {
 
 4. **No Streaming:** Query operations return complete result sets; streaming/pagination is handled through limit/offset parameters.
 
-5. **No Event Hooks:** The API does not provide event callbacks; observing changes is the responsibility of the consuming application.
+5. **No Event Hooks:** The API does not provide event callbacks; observing changes is the responsibility of the consuming application (see Event System specification).
 
 6. **Simple Configuration Focus:** The API prioritizes simplicity over exhaustive configurability; edge cases may require custom wrappers.
 
-7. **Cache Limitations:** Cache is optional and in-process only; distributed caching is not provided. Cache invalidation is the responsibility of the module when configured.
+7. **Cache Limitations:** Cache is optional and in-process only; distributed caching is not provided.
+
+8. **Reaction Type Immutability:** Reaction types cannot be modified after initialization. The module must be restarted to change supported reaction types.
 
 ## API Usage Example
 
@@ -361,6 +391,7 @@ config := golikeit.Config{
         User:     "app",
         Password: "secret",
     },
+    ReactionTypes: []string{"LIKE", "DISLIKE", "LOVE", "ANGRY"},
 }
 
 // Client construction
@@ -373,20 +404,29 @@ defer client.Close()
 // Operations
 ctx := context.Background()
 
-// User likes a photo (Reaction Target: type="photo", id="photo_456")
-err = client.Like(ctx, "user_123", "photo", "photo_456")
+// User adds a LIKE reaction
+isReplaced, err := client.AddReaction(ctx, "user_123", "photo", "photo_456", "LIKE")
+// isReplaced = false (no previous reaction)
 
-// Attempting to like again returns ErrDuplicateReaction (idempotent behavior)
-err = client.Like(ctx, "user_123", "photo", "photo_456")
-// err == golikeit.ErrDuplicateReaction (or ErrDuplicateLike)
+// User replaces LIKE with LOVE
+isReplaced, err = client.AddReaction(ctx, "user_123", "photo", "photo_456", "LOVE")
+// isReplaced = true (LIKE was replaced with LOVE)
 
-// Check reaction state for User Reaction (user_123 + photo:photo_456)
-state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
-// state == golikeit.ReactionLike
+// Check reaction state
+reactionType, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
+// reactionType = "LOVE"
 
 // Get counts for Reaction Target
- counts, err := client.GetEntityCounts(ctx, "photo", "photo_456")
-// counts.Likes, counts.Dislikes
+counts, total, err := client.GetEntityReactionCounts(ctx, "photo", "photo_456")
+// counts = {"LIKE": 0, "LOVE": 1, "DISLIKE": 0, "ANGRY": 0}
+// total = 1
+
+// Remove reaction
+err = client.RemoveReaction(ctx, "user_123", "photo", "photo_456")
+
+// Check if reaction exists
+hasReaction, err := client.HasUserReaction(ctx, "user_123", "photo", "photo_456")
+// hasReaction = false
 ```
 
 ## Relationships with Other Functional Blocks
@@ -399,38 +439,28 @@ state, err := client.GetUserReaction(ctx, "user_123", "photo", "photo_456")
 
 | Date | Change | Description |
 |------|--------|-------------|
-| 2026-03-21 | Initial | First version of API interface specification |
-| 2026-03-21 | Update | Added duplicate reaction error types for idempotency; updated examples to reflect Reaction Target and User Reaction concepts |
-| 2026-03-21 | Update | Added Requirement 8 (Simple Configuration API) with fluent interface pattern |
-| 2026-03-21 | Update | Added Requirement 9 (Caching Layer) and Requirement 10 (Bulk Operations) |
-| 2026-03-21 | Update | Added GetUserLikes, GetUserDislikes, GetEntityReactionsWithUsers operations; added consolidated query operations with counts and recent users |
-| 2026-03-21 | Update | Added Requirement 11 (Pagination Support) and Requirement 12 (Fast Reaction Check Operations) |
-| 2026-03-21 | Update | Updated pagination to use limit-offset principle; response includes total records and total pages |
+| 2026-03-21 | Initial | First version with Like/Unlike/Dislike/Undislike operations |
+| 2026-03-22 | Major | Refactored to abstract reaction model - replaced specific operations with generic AddReaction/RemoveReaction, added ReactionTypes configuration |
 
 ## Acceptance Criteria
 
 1. **AC1:** All API methods accept context.Context as the first parameter
-2. **AC2:** All API methods return (result, error) tuples
+2. **AC2:** All API methods return appropriate results with error tuples
 3. **AC3:** Exported error types allow comparison with errors.Is()
-4. **AC4:** Client construction validates configuration and returns descriptive errors
+4. **AC4:** Client construction validates reaction type configuration and returns descriptive errors
 5. **AC5:** Client is safe for concurrent use without external synchronization
 6. **AC6:** Context cancellation terminates operations promptly
 7. **AC7:** Context timeouts are respected and return timeout errors
 8. **AC8:** Close() releases resources and is safe to call multiple times
 9. **AC9:** Configuration types use struct tags and provide defaults
 10. **AC10:** API is idiomatic Go (no unnecessary abstraction, clear naming)
-11. **AC11:** Basic configuration requires only a database URL (one-liner setup)
-12. **AC12:** Configuration uses functional options pattern or builder for extensibility
-13. **AC13:** Configuration errors are caught at initialization with clear messages
-14. **AC14:** All exported types have clear documentation with usage examples
-15. **AC15:** Cache can be enabled/disabled via configuration with configurable TTL
-16. **AC16:** Cache invalidation occurs on reaction state changes
-17. **AC17:** Bulk operations minimize database round trips
-18. **AC18:** Bulk operations enforce maximum batch size limits
-19. **AC19:** GetUserLikes and GetUserDislikes return paginated entities with user reactions
-20. **AC20:** GetEntityReactionsWithUsers returns consolidated data (counts + recent users) in single call
-21. **AC21:** Recent users list is configurable (N users, default 10)
-22. **AC22:** Pagination is used for queries potentially returning >50 records
-23. **AC23:** Pagination uses consistent model (PaginatedResult[T]) across all operations
-24. **AC24:** HasUserLiked and HasUserDisliked return boolean in <10ms
-25. **AC25:** Fast check operations use single key lookup optimization
+11. **AC11:** Basic configuration requires database URL and at least one reaction type
+12. **AC12:** AddReaction returns isReplacement flag indicating if previous reaction existed
+13. **AC13:** RemoveReaction returns error if no reaction exists
+14. **AC14:** GetUserReaction returns reaction type or empty string if none
+15. **AC15:** GetEntityReactionCounts returns counts for all configured reaction types
+16. **AC16:** Cache can be enabled/disabled via configuration with configurable TTL
+17. **AC17:** Cache invalidation occurs on reaction state changes
+18. **AC18:** Bulk operations minimize database round trips
+19. **AC19:** Pagination is used for queries potentially returning >50 records
+20. **AC20:** Reaction type validation occurs at initialization with pattern [A-Z0-9_-]+

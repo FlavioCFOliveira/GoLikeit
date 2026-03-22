@@ -14,11 +14,12 @@ The system shall be organized into distinct architectural layers with clear sepa
 
 **Business Layer (Service Layer):**
 - Contains business logic and rules
-- Validates input parameters
+- Validates input parameters including reaction types against configured registry
 - Orchestrates data layer operations
 - Defines the public API surface
 - Handles transaction coordination
-- Enforces business constraints (e.g., mutual exclusivity of LIKE/DISLIKE)
+- Enforces single-reaction-per-user constraint
+- Manages reaction type configuration at initialization
 
 **Data Layer (Repository Layer):**
 - Handles all database interactions
@@ -26,6 +27,7 @@ The system shall be organized into distinct architectural layers with clear sepa
 - Provides CRUD operations for reaction entities
 - Manages database connections and transactions
 - Implements storage-specific optimizations
+- Supports reaction type-agnostic storage (reaction type stored as string)
 
 **Communication Rules:**
 - The Business Layer may call the Data Layer
@@ -38,29 +40,31 @@ The system shall be organized into distinct architectural layers with clear sepa
 **Description:** Each layer shall expose its capabilities through well-defined interfaces.
 
 **Business Layer Interface:**
-- Define Like(entity_type, entity_id, user_id) error
-- Define Unlike(entity_type, entity_id, user_id) error
-- Define Dislike(entity_type, entity_id, user_id) error
-- Define Undislike(entity_type, entity_id, user_id) error
-- Define GetReaction(entity_type, entity_id, user_id) (ReactionType, error)
-- Define GetEntityCounts(entity_type, entity_id) (Counts, error)
+- Define AddReaction(entity_type, entity_id, user_id, reaction_type) (isReplacement bool, error)
+- Define RemoveReaction(entity_type, entity_id, user_id) error
+- Define GetUserReaction(entity_type, entity_id, user_id) (reaction_type string, error)
+- Define GetEntityReactionCounts(entity_type, entity_id) (counts map[string]int64, total int64, error)
 - Define GetUserReactions(user_id, filters) ([]Reaction, error)
+- Define HasUserReaction(entity_type, entity_id, user_id) (bool, error)
+- Define HasUserReactionType(entity_type, entity_id, user_id, reaction_type) (bool, error)
 
 **Data Layer Interface:**
-- Define CreateReaction(reaction) error
+- Define CreateReaction(user_id, entity_type, entity_id, reaction_type) error
+- Define ReplaceReaction(user_id, entity_type, entity_id, new_reaction_type, previous_reaction_type) error
 - Define DeleteReaction(user_id, entity_type, entity_id) error
-- Define UpdateReaction(reaction) error
-- Define GetReaction(user_id, entity_type, entity_id) (Reaction, error)
+- Define GetReaction(user_id, entity_type, entity_id) (reaction_type string, error)
 - Define GetReactionsByUser(user_id, filters) ([]Reaction, error)
 - Define GetReactionsByEntity(entity_type, entity_id) ([]Reaction, error)
-- Define GetCountsByEntity(entity_type, entity_id) (Counts, error)
+- Define GetCountsByEntity(entity_type, entity_id) (map[string]int64, error)
 - Define IncrementCount(entity_type, entity_id, reaction_type) error
 - Define DecrementCount(entity_type, entity_id, reaction_type) error
+- Define UpdateCountForReplacement(entity_type, entity_id, old_type, new_type) error
 
 **Requirements:**
 - Interfaces shall be language-idiomatic (Go interfaces)
 - Interface methods shall have clear input and output contracts
 - Error types shall be consistent and informative
+- Reaction types are passed as strings (not enums) to support configuration
 
 ### Requirement 3: Dependency Direction
 
@@ -71,62 +75,75 @@ The system shall be organized into distinct architectural layers with clear sepa
 - Data Layer has no dependencies on Business Layer
 - Data Layer implementations depend on database drivers
 - External consumers depend on Business Layer interfaces
+- Reaction type configuration is passed downward from initialization
 
 **Benefits:**
 - Business logic is isolated from storage concerns
 - Data Layer implementations can be swapped without affecting business logic
 - Testing is simplified through interface mocking
+- Reaction types are configurable without code changes
 
 ### Requirement 4: Configuration Management
 
-**Description:** The system shall support configuration for both layers.
+**Description:** The system shall support configuration for both layers including reaction type definitions.
 
 **Business Layer Configuration:**
-- Default reaction types (extensible list)
+- **Reaction Types (Required):** List of reaction types supported by the module (minimum 1)
 - Validation rules (identifier lengths, allowed characters)
 - Behavior flags (e.g., strict mode vs. lenient mode)
 
 **Data Layer Configuration:**
-- Database type (PostgreSQL, MariaDB, SQLite)
+- Database type (PostgreSQL, MariaDB, SQLite, MongoDB, Cassandra, Redis, In-Memory)
 - Connection parameters (host, port, credentials, database name)
 - Connection pool settings
 - Migration configuration
+
+**Reaction Type Configuration:**
+- Reaction types must be provided during module initialization
+- Validation occurs at startup - module fails if invalid
+- Format: `^[A-Z0-9_-]+$` (uppercase letters, digits, hyphens, underscores)
+- No reaction types can be added after initialization
+- Configuration is immutable after startup
 
 **Configuration Delivery:**
 - Configuration shall be passed during initialization
 - Environment variables or configuration files may be used by the consuming application
 - The module shall accept configuration through code (not read files directly)
+- Reaction type list is validated before module becomes operational
 
 ### Requirement 5: Error Handling
 
 **Description:** The system shall define clear error types and handling patterns.
 
 **Error Categories:**
-- **Validation Errors:** Invalid input parameters
-- **Business Logic Errors:** Constraint violations (e.g., duplicate LIKE)
+- **Validation Errors:** Invalid input parameters, invalid reaction types
+- **Business Logic Errors:** Constraint violations (e.g., removing non-existent reaction)
 - **Storage Errors:** Database connectivity or query failures
 - **System Errors:** Unexpected internal failures
+- **Configuration Errors:** Invalid reaction types, empty type list
 
 **Requirements:**
 - Errors shall be typed to allow programmatic handling
 - Error messages shall be clear and actionable
 - Storage errors shall not expose sensitive information (credentials, internal paths)
 - Business logic errors shall include context (which entity, which user)
+- Configuration errors occur at initialization and prevent module startup
 
 ### Requirement 6: Extensibility Points
 
 **Description:** The architecture shall provide extension points for future capabilities.
 
 **Extension Points:**
-- New reaction types may be added without modifying core logic
 - New storage backends may be added by implementing the Data Layer interface
 - Middleware/interceptors may be added for cross-cutting concerns (logging, metrics)
 - Custom validators may be plugged into the Business Layer
+- Reaction types are defined by configuration (not code)
 
 **Requirements:**
 - Extension points shall use interfaces or function types
 - Default implementations shall be provided for common cases
 - Extensions shall not require modification of existing layer code
+- Reaction types are configured, not hardcoded
 
 ### Requirement 7: High Concurrency and Load Support
 
@@ -137,8 +154,8 @@ The system shall be organized into distinct architectural layers with clear sepa
 **Description:** The system shall include an optional caching layer between Business and Data layers.
 
 **Cache Layer Responsibilities:**
-- Cache user reaction states for fast lookups
-- Cache entity reaction counts to reduce database load
+- Cache user reaction states for fast lookups (key includes reaction type)
+- Cache entity reaction counts per type to reduce database load
 - Implement cache invalidation on write operations
 - Provide thread-safe cache operations
 
@@ -206,6 +223,10 @@ The system shall be organized into distinct architectural layers with clear sepa
 
 7. **Caching Layer:** Optional cache layer improves read performance but adds complexity to consistency management.
 
+8. **Reaction Type Immutability:** Reaction types cannot be modified after initialization. The module must be restarted to change supported reaction types.
+
+9. **Single Reaction Per User:** The architecture enforces that each user can have only one reaction per target. This is a fundamental constraint of the data model.
+
 ## Layer Communication Flow
 
 ```
@@ -215,7 +236,8 @@ External Consumer
 +------------------+
 | Business Layer   | (Validates, orchestrates, enforces rules)
 | - Input validation
-| - Business logic
+| - Reaction type validation against configured registry
+| - Business logic (single reaction per user)
 | - Transaction coordination
 +------------------+
        |
@@ -223,7 +245,7 @@ External Consumer
 +------------------+
 | Cache Layer      | (Optional - improves read performance)
 | - Reaction state cache
-| - Entity counts cache
+| - Entity counts cache (per reaction type)
 | - Cache invalidation
 +------------------+
        |
@@ -233,6 +255,7 @@ External Consumer
 | - CRUD operations
 | - Database-specific code
 | - Connection management
+| - Atomic replacement operations
 +------------------+
        |
        v
@@ -252,6 +275,7 @@ External Consumer
 | 2026-03-21 | Initial | First version of architecture specification |
 | 2026-03-21 | Update | Added Requirement 7 (High Concurrency and Load Support) as critical design constraint |
 | 2026-03-21 | Update | Added Requirement 8 (Caching Layer) to architecture |
+| 2026-03-22 | Major | Updated for abstract reaction model - reaction types are configured, not hardcoded; added single-reaction-per-user constraint; updated interfaces to use string reaction types |
 
 ## Acceptance Criteria
 
@@ -263,7 +287,7 @@ External Consumer
 6. **AC6:** Storage-specific code resides only in the Data Layer
 7. **AC7:** Error types allow programmatic handling of different error categories
 8. **AC8:** Configuration is passed during initialization, not read from files
-9. **AC9:** Extension points exist for new reaction types and storage backends
+9. **AC9:** Extension points exist for storage backends and validators
 10. **AC10:** External consumers interact only with the Business Layer
 11. **AC11:** No global locks exist that would block all concurrent operations
 12. **AC12:** Lock-free or minimal-lock patterns are used for high-concurrency paths
@@ -272,3 +296,6 @@ External Consumer
 15. **AC15:** Cache layer is optional and can be disabled
 16. **AC16:** Cache invalidation occurs on write operations
 17. **AC17:** Cache is thread-safe for concurrent access
+18. **AC18:** Reaction type configuration is validated at initialization
+19. **AC19:** Module fails to initialize if reaction type configuration is invalid
+20. **AC20:** Interfaces support any reaction type defined by configuration

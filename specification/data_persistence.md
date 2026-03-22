@@ -32,7 +32,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - **SQLite:** Use WAL mode, appropriate cache size, single-writer optimizations
 - **MongoDB:** Use compound indexes, aggregation pipelines for counts, connection pooling
 - **Cassandra:** Use appropriate replication factor, partition key design, prepared statements, batch operations where applicable
-- **Redis:** Use hash data structures for reactions, sets for entity counts, pipelining for batch operations
+- **Redis:** Use hash data structures for reactions, hash for entity counts per type, pipelining for batch operations
 - **In-Memory:** Use Go maps with RWMutex for thread-safe access; periodic snapshots optional
 
 ### Requirement 2: Data Integrity
@@ -48,7 +48,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 **User Reaction Uniqueness:**
 - The composite key (user_id, entity_type, entity_id) represents a single User Reaction
 - Duplicate User Reactions are prevented at the database level via unique constraints
-- Attempting to create a duplicate User Reaction with the same reaction type shall be rejected
+- Only one reaction can exist per User Reaction; adding a new reaction replaces any existing one
 
 **Constraints:**
 - Data corruption shall be detected and reported
@@ -64,8 +64,8 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - **user_id:** Identifier of the user who performed the reaction (User Reaction user component)
 - **entity_type:** Type of entity being reacted to (Reaction Target type component)
 - **entity_id:** Identifier of the specific entity instance (Reaction Target ID component)
-- **reaction_type:** Type of reaction (LIKE, DISLIKE, etc.)
-- **created_at:** Timestamp when the reaction was created (represents the moment of the LIKE or DISLIKE action)
+- **reaction_type:** Type of reaction (must match one of the configured reaction types)
+- **created_at:** Timestamp when the reaction was created or replaced
 
 **Composite Key:**
 - The combination of (user_id, entity_type, entity_id) represents a User Reaction
@@ -73,26 +73,23 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - Together, these fields identify a user's reaction to a specific Reaction Target
 
 **Behavior:**
-- Creating a new LIKE or DISLIKE sets created_at to the current time
-- When a LIKE replaces a DISLIKE (or vice versa), the created_at timestamp is updated to reflect the moment of the new reaction
-- Deleting a reaction (UNLIKE or UNDISLIKE) removes the record entirely
-- The created_at timestamp always represents when the current reaction (LIKE or DISLIKE) was established
-- Duplicate LIKE/DISLIKE attempts (same User Reaction, same reaction_type) are rejected at the application level
+- Creating a new reaction sets created_at to the current time
+- When a reaction is replaced with a different type, the record is updated with the new reaction_type and created_at timestamp
+- Deleting a reaction (RemoveReaction) removes the record entirely
+- The created_at timestamp always represents when the current reaction was established (including replacements)
 
 ### Requirement 4: Atomic Operations
 
 **Description:** Operations that modify multiple related records shall be atomic.
 
 **Requirements:**
-- Creating a User Reaction and updating Reaction Target counts shall be atomic
+- Creating or replacing a User Reaction and updating Reaction Target counts shall be atomic
 - Removing a User Reaction and updating Reaction Target counts shall be atomic
-- Switching reaction types (LIKE to DISLIKE) shall be atomic
 - Failed operations shall leave the database in its previous consistent state
 
-**Idempotency Enforcement:**
-- Duplicate LIKE/DISLIKE detection occurs within the transaction
-- If a duplicate is detected, the transaction rolls back with no changes
-- This ensures atomicity of idempotency checks
+**Replacement Semantics:**
+- When a reaction is replaced, the previous reaction type's count is decremented and the new type's count is incremented atomically
+- Replacement is implemented as UPSERT: INSERT on conflict UPDATE
 
 **Constraints:**
 - Atomicity shall be enforced at the database transaction level
@@ -105,12 +102,12 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 
 **Required Queries:**
 - Retrieve User Reaction by (user_id, entity_type, entity_id)
-- Retrieve all User Reactions for a user with optional filters (liked entities, disliked entities)
+- Retrieve all User Reactions for a user with optional filters (by entity_type, by reaction_type)
 - Retrieve all User Reactions for a Reaction Target
-- Retrieve aggregated counts by Reaction Target (total likes, total dislikes)
+- Retrieve aggregated counts by Reaction Target (counts per configured reaction type)
 - Retrieve aggregated counts by user
 - **Consolidated Entity Query:** Retrieve counts AND recent users who reacted in single operation
-  - Returns: total likes, total dislikes, list of recent users who liked, list of recent users who disliked
+  - Returns: counts per reaction type, list of recent users per reaction type
   - Single database invocation to get complete reaction picture
 
 **Efficiency Requirements:**
@@ -141,13 +138,20 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - **Cursor Support:** Optional cursor-based pagination for very large datasets
 - **Threshold:** Automatic pagination for queries returning >50 records
 
+**Pagination in Eventually Consistent Systems:**
+- MongoDB and Cassandra provide eventual consistency by default
+- Under high concurrency, paginated queries may return duplicate records or miss records that were added/removed during pagination
+- The application accepts these characteristics as inherent to the chosen database
+- For strong consistency requirements, use SQL backends (PostgreSQL, MariaDB) or configure MongoDB/Cassandra for stronger consistency (with performance trade-offs)
+- Applications requiring strict pagination consistency should implement cursor-based pagination at the application layer
+
 **Fast Check Operations:**
-- **HasUserLiked:** Ultra-fast boolean check (single key lookup)
+- **HasUserReaction:** Ultra-fast boolean check if user has any reaction (single key lookup)
   - SQL: SELECT EXISTS(SELECT 1 FROM reactions WHERE ...)
   - Redis: EXISTS reaction:{user_id}:{entity_type}:{entity_id}
   - MongoDB: Count with limit 1
   - In-Memory: Map lookup with O(1)
-- **HasUserDisliked:** Same optimizations as HasUserLiked
+- **HasUserReactionType:** Ultra-fast check if user has specific reaction type
 - **Performance Target:** <10ms p95 latency
 - **Cache Priority:** Check cache before database for fastest response
 
@@ -212,16 +216,16 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 **Description:** The system shall support Redis as a storage backend for high-performance, low-latency reaction storage.
 
 **Redis Data Model:**
-- **User Reactions:** Stored as hash entries with key pattern `reaction:{user_id}:{entity_type}:{entity_id}`
-- **Entity Counts:** Stored as hash with key `counts:{entity_type}:{entity_id}` containing like/dislike counters
+- **User Reactions:** Stored as hash entries with key pattern `reaction:{user_id}:{entity_type}:{entity_id}` containing reaction_type
+- **Entity Counts:** Stored as hash with key `counts:{entity_type}:{entity_id}` containing count per reaction type
 - **User Reaction Index:** Set per user containing all entities reacted to for quick lookup
 - **Entity Reaction Index:** Set per entity containing all users who reacted for aggregation
 
 **Redis Operations:**
 - **Pipelining:** Batch operations use pipelining to minimize round trips
 - **Transactions:** Multi/Exec for atomic counter updates
-- **Lua Scripts:** Server-side scripts for complex atomic operations (e.g., swap LIKE to DISLIKE)
-- **TTL Support:** Optional expiration for temporary reactions
+- **Lua Scripts:** Server-side scripts for complex atomic operations (e.g., replace reaction type)
+- **TTL Support:** Not applicable to Redis as storage backend. TTL is used exclusively by the cache layer (see [api_interface.md](api_interface.md)). When Redis is used as storage, entries are persistent unless explicitly deleted. When Redis is used as cache, TTL controls cache entry expiration.
 
 **Requirements:**
 - Redis connection pooling via go-redis or similar client
@@ -251,8 +255,8 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 - High-performance scenarios where durability is not required
 
 **Data Structures:**
-- **User Reactions:** Stored in Go maps with composite key (user_id + entity_type + entity_id)
-- **Entity Counts:** Maintained in separate counters map with atomic operations
+- **User Reactions:** Stored in Go maps with composite key (user_id + entity_type + entity_id) mapping to reaction_type
+- **Entity Counts:** Maintained in separate counters map per reaction type with atomic operations
 - **Concurrency:** RWMutex for read-heavy operations; sync.Map optional for high concurrency
 
 **Limitations:**
@@ -289,6 +293,8 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 
 10. **Independent Audit Storage:** While reaction data uses the configured primary storage, audit logging may be configured to use a separate database. See [audit_logging.md](audit_logging.md) for details.
 
+11. **No Built-in Backup and Restore:** Backup, restore, and disaster recovery procedures are not provided by this module. These are the responsibility of the database administrator and infrastructure layer, using native database tools (pg_dump, mongodump, etc.) or external backup solutions. The consuming application should implement backup strategies appropriate to their chosen storage backend.
+
 ## Relationships with Other Functional Blocks
 
 - **[reaction_management.md](reaction_management.md):** Defines the data operations for reactions
@@ -310,6 +316,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 | 2026-03-21 | Update | Added Requirement 5 efficiency requirements (minimize round trips, single invocation for consolidated queries) |
 | 2026-03-21 | Update | Added pagination requirements and fast check operation requirements to Requirement 5 |
 | 2026-03-21 | Update | Updated pagination to limit-offset principle with total records and total pages in response |
+| 2026-03-22 | Major | Updated for abstract reaction model - single reaction per user, replacement semantics, counts per reaction type |
 
 ## Acceptance Criteria
 
@@ -322,14 +329,14 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 7. **AC7:** The system supports In-Memory storage for development and testing
 8. **AC8:** All User Reaction data includes required fields (id, user_id, entity_type, entity_id, reaction_type, created_at)
 9. **AC9:** The combination of (user_id, entity_type, entity_id) is unique across the system (User Reaction uniqueness)
-10. **AC10:** Creating a User Reaction and updating Reaction Target counts is atomic
+10. **AC10:** Creating or replacing a User Reaction and updating Reaction Target counts is atomic
 11. **AC11:** Removing a User Reaction and updating Reaction Target counts is atomic
 12. **AC12:** Failed operations do not leave partial data in the database
 13. **AC13:** Queries by (user_id, entity_type, entity_id) use indexed lookups
 14. **AC14:** Schema migrations are versioned and tracked
 15. **AC15:** Migration scripts are provided for all supported databases
 16. **AC16:** Connection pooling is supported for PostgreSQL, MariaDB, MongoDB, Cassandra, and Redis
-17. **AC17:** Duplicate LIKE/DISLIKE attempts are detected and rejected with no database changes
+17. **AC17:** Replacement operations update counts atomically (decrement old type, increment new type)
 18. **AC18:** All queries use appropriate indexes; no full table scans on hot paths
 19. **AC19:** Prepared statements are used for all repeated queries
 20. **AC20:** Query execution times are logged and monitored
@@ -337,7 +344,7 @@ The system shall provide a storage-agnostic data layer capable of persisting rea
 22. **AC22:** Redis supports pipelining for batch operations
 23. **AC23:** Consolidated queries (counts + users) use single database invocation where possible
 24. **AC24:** No N+1 query patterns in query implementations
-25. **AC25:** Queries for user likes/dislikes use pagination (default 20, max 100)
+25. **AC25:** Queries for user reactions use pagination (default 20, max 100)
 26. **AC26:** All data layer implementations use consistent pagination model
-27. **AC27:** HasUserLiked and HasUserDisliked use single key lookup
+27. **AC27:** HasUserReaction and HasUserReactionType use single key lookup
 28. **AC28:** Fast check operations complete in <10ms p95 latency

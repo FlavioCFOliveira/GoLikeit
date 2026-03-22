@@ -2,35 +2,45 @@
 
 ## Overview
 
-The system shall maintain a simple, comprehensive audit log of all reaction operations. The audit log records every operation performed (LIKE, UNLIKE, DISLIKE, UNDISLIKE) with minimal metadata to provide a complete history of reaction activities.
+The system shall maintain a simple, comprehensive audit log of all reaction operations. The audit log records every operation performed (ADD, REPLACE, REMOVE) with minimal metadata to provide a complete history of reaction activities.
 
 ## Functional Requirements
 
-### Requirement 1: Configurable Audit Logging
+### Requirement 1: Mandatory Audit Logging with Configurable Persistence
 
-**Description:** The system shall support configurable audit logging with a no-op implementation as default.
+**Description:** The system shall implement audit logging as an architectural mandatory component. Every reaction operation generates an audit event. The audit system defaults to NullAuditor when no persistence is configured, but the audit logging mechanism is always present and cannot be disabled.
 
 **Requirements:**
-- Audit logging is configurable; consuming application chooses the implementation
-- **NullAuditor:** A no-op (null object) implementation is provided as default
+- **Architectural Mandate:** Audit logging is a core system component that is always active
+  - Every reaction operation (ADD, REPLACE, REMOVE) generates an audit event
+  - The audit system cannot be disabled or removed from the module
+  - This satisfies security-first policy requiring comprehensive audit trails
+- **NullAuditor (Default Fallback):** A no-op implementation used when no persistence is configured
   - NullAuditor accepts audit entries but performs no persistence
   - NullAuditor has zero overhead and no external dependencies
-  - NullAuditor is suitable when audit logging is not required
-- **Persistent Auditor:** Full audit logging implementation persists to configured storage
-  - Every reaction operation is recorded
+  - NullAuditor is the **fallback**, not a replacement for audit logging
+  - Suitable for development, testing, or when external audit storage is unavailable
+- **Persistent Auditor:** Full audit logging implementation that persists to configured storage
+  - Automatically activated when audit storage is configured
+  - Every reaction operation is recorded to persistent storage
   - Audit log entries are append-only and immutable
-- Audit implementation is selected during module initialization
+- **Implementation Selection:** The system automatically selects the appropriate implementation
+  - If audit storage is configured: use Persistent Auditor
+  - If no audit storage is configured: use NullAuditor (fallback)
 
 **Behavior:**
-- By default, NullAuditor is used (no audit output)
-- Consuming application must explicitly configure persistent auditing if desired
-- Failed operations may still be logged with error indication (when using persistent auditor)
+- By default, if no audit storage is configured, NullAuditor is used (audit events accepted but not persisted)
+- Consuming application configures persistent auditing by providing audit storage configuration
+- Failed operations are logged with error indication (when using persistent auditor)
 - Audit logging occurs as part of the transaction (atomic with the operation) when persistent
+- The audit system is always initialized and cannot be "turned off"
 
 **Rationale:**
-- Zero-overhead default for applications that do not require auditing
-- No breaking changes when upgrading from versions without auditing
-- Consuming application explicitly opts into audit functionality
+- Security-first: Audit logging is architecturally mandatory, satisfying compliance requirements
+- Flexibility: Applications can run without external audit storage (using NullAuditor fallback)
+- Zero-overhead option: NullAuditor provides fallback with no performance impact
+- No breaking changes: Existing applications without audit configuration continue to work
+- Gradual adoption: Applications can add audit persistence without code changes, only configuration
 
 ### Requirement 2: Log Entry Content
 
@@ -38,21 +48,18 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 
 **Required Fields:**
 - **id:** Unique identifier for the audit entry
-- **operation:** The operation type (LIKE, UNLIKE, DISLIKE, UNDISLIKE, CONVERSION_LIKE, CONVERSION_DISLIKE)
+- **operation:** The operation type (ADD, REPLACE, REMOVE)
 - **user_id:** The user who performed the operation
 - **entity_type:** The type of entity affected
 - **entity_id:** The identifier of the entity affected
-- **reaction_type:** The resulting reaction state (LIKE, DISLIKE, NONE for removals)
-- **previous_reaction:** The reaction state before the operation (LIKE, DISLIKE, NONE)
+- **reaction_type:** The resulting reaction type (e.g., "LIKE", "LOVE")
+- **previous_reaction:** The reaction type before the operation (empty if no previous reaction)
 - **timestamp:** The exact date and time when the operation occurred
 
 **Operation Types:**
-- **LIKE:** User created a new LIKE
-- **UNLIKE:** User removed an existing LIKE
-- **DISLIKE:** User created a new DISLIKE
-- **UNDISLIKE:** User removed an existing DISLIKE
-- **CONVERSION_LIKE:** LIKE replaced an existing DISLIKE
-- **CONVERSION_DISLIKE:** DISLIKE replaced an existing LIKE
+- **ADD:** User added a new reaction where none existed
+- **REPLACE:** User replaced an existing reaction with a different type
+- **REMOVE:** User removed their reaction
 
 ### Requirement 3: Timestamp Precision
 
@@ -66,11 +73,11 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 
 ### Requirement 4: Audit Log Storage
 
-**Description:** Audit log entries shall be stored in the same database as reaction data.
+**Description:** Audit log entries shall be stored in a separate table/collection from reaction data.
 
 **Requirements:**
 - Audit log table shall be separate from reaction data table
-- Audit log entries shall be stored in the same transaction as the operation
+- Audit log entries shall be stored in the same transaction as the operation (when same database)
 - Failed operations may be logged with error status
 
 **Retention:**
@@ -86,6 +93,7 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 - Retrieve audit entries by user_id (chronological order)
 - Retrieve audit entries by entity (type + id) (chronological order)
 - Retrieve audit entries by operation type
+- Retrieve audit entries by reaction type
 - Retrieve audit entries by date range
 - Support pagination for large result sets
 
@@ -120,7 +128,7 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 **Allowed Operations:**
 - Insert audit entry (atomic with reaction operation)
 - Get audit entry by ID
-- Query audit entries (by user, entity, date range, operation type)
+- Query audit entries (by user, entity, date range, operation type, reaction type)
 - Paginate through audit entries
 
 **Rationale:**
@@ -138,6 +146,14 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 - Audit operations shall not depend on reaction storage availability
 - Audit storage failures shall not impact reaction operations (and vice versa)
 - Cross-database transactions are not required; eventual consistency is acceptable for audit entries
+
+**Audit Failure Behavior:**
+- If audit storage fails during a reaction operation, the reaction operation **continues and succeeds**
+- The reaction data is persisted to reaction storage regardless of audit failure
+- Audit failure is logged as an error (via module logger) but does not block the operation
+- Failed audit entries may be queued for retry (implementation-dependent)
+- Eventual consistency: audit entry may appear after the reaction is already visible
+- Priority: Availability of reaction functionality takes precedence over audit persistence
 
 **Configuration Options:**
 - Separate connection strings for audit and reaction storage
@@ -162,6 +178,10 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 
 5. **No Delete/Update Operations:** The audit package explicitly does not provide delete or update operations; audit entries are immutable and append-only.
 
+6. **Source of Historical Truth:** Since reaction_management.md implements hard delete (RemoveReaction permanently deletes), the audit log is the sole source of historical data for removed reactions. Applications requiring "who reacted before" or "reaction history" functionality must query the audit log.
+
+7. **Time-Series Analytics:** The audit log contains timestamps for all operations and can be used for time-series analysis (e.g., reactions over time, engagement trends). However, dedicated time-series analytics features (aggregations, rollups, trend analysis) are not provided by this module. Applications requiring such analytics should process the audit log or use dedicated analytics systems.
+
 ## Relationships with Other Functional Blocks
 
 - **[reaction_management.md](reaction_management.md):** Defines the operations that generate audit log entries
@@ -176,24 +196,25 @@ The system shall maintain a simple, comprehensive audit log of all reaction oper
 | 2026-03-21 | Initial | First version of audit logging specification |
 | 2026-03-21 | Update | Added Requirement 7 (Audit Operations Restriction) and Requirement 8 (Independent Storage Layer) |
 | 2026-03-21 | Update | Modified Requirement 1 to Configurable Audit Logging with NullAuditor as default |
+| 2026-03-21 | Clarification | Requirement 1 clarified: Audit logging is architecturally mandatory; NullAuditor is the fallback when no persistence is configured |
+| 2026-03-22 | Update | Updated operation types from LIKE/UNLIKE/DISLIKE/UNDISLIKE to ADD/REPLACE/REMOVE |
 
 ## Acceptance Criteria
 
-1. **AC1:** Every LIKE operation creates an audit log entry
-2. **AC2:** Every UNLIKE operation creates an audit log entry
-3. **AC3:** Every DISLIKE operation creates an audit log entry
-4. **AC4:** Every UNDISLIKE operation creates an audit log entry
-5. **AC5:** Conversion operations (LIKE replacing DISLIKE, DISLIKE replacing LIKE) create audit log entries with appropriate operation type
-6. **AC6:** Audit log entries include all required fields (id, operation, user_id, entity_type, entity_id, reaction_type, previous_reaction, timestamp)
-7. **AC7:** Audit log timestamps are recorded in UTC with millisecond precision
-8. **AC8:** Audit log entries are immutable and cannot be modified or deleted
-9. **AC9:** Audit log entries can be queried by user_id with pagination
-10. **AC10:** Audit log entries can be queried by entity (type + id) with pagination
-11. **AC11:** Audit log queries support date range filtering
-12. **AC12:** Audit log entries are created atomically with the corresponding reaction operation
-13. **AC13:** The audit package exposes only Insert and Get operations; no Delete or Update methods exist
-14. **AC14:** Audit storage can be configured independently from reaction storage with separate connection parameters
-15. **AC15:** Audit storage failures do not impact reaction operations (decoupled storage)
-16. **AC16:** NullAuditor is available as default no-op implementation
-17. **AC17:** Consuming application can configure persistent auditing explicitly
-18. **AC18:** Switching between NullAuditor and persistent auditor requires no code changes
+1. **AC1:** Every ADD operation creates an audit log entry
+2. **AC2:** Every REPLACE operation creates an audit log entry
+3. **AC3:** Every REMOVE operation creates an audit log entry
+4. **AC4:** Audit log entries include all required fields (id, operation, user_id, entity_type, entity_id, reaction_type, previous_reaction, timestamp)
+5. **AC5:** Audit log timestamps are recorded in UTC with millisecond precision
+6. **AC6:** Audit log entries are immutable and cannot be modified or deleted
+7. **AC7:** Audit log entries can be queried by user_id with pagination
+8. **AC8:** Audit log entries can be queried by entity (type + id) with pagination
+9. **AC9:** Audit log entries can be queried by reaction type
+10. **AC10:** Audit log queries support date range filtering
+11. **AC11:** Audit log entries are created atomically with the corresponding reaction operation (when same storage)
+12. **AC12:** The audit package exposes only Insert and Get operations; no Delete or Update methods exist
+13. **AC13:** Audit storage can be configured independently from reaction storage with separate connection parameters
+14. **AC14:** Audit storage failures do not impact reaction operations (decoupled storage)
+15. **AC15:** NullAuditor is available as default no-op implementation
+16. **AC16:** Consuming application can configure persistent auditing explicitly
+17. **AC17:** Switching between NullAuditor and persistent auditor requires no code changes

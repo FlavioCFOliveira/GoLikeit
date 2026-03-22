@@ -4,6 +4,8 @@
 
 The system shall provide user-agnostic reaction capabilities, treating user identifiers as opaque values passed through from the consuming application. The module does not maintain user information, authentication state, or user profiles; it solely records which user identifier (user_id) performed which reaction on which Reaction Target.
 
+Each user may have exactly **one** reaction per Reaction Target. When a user adds a reaction to a target that already has a reaction from that user, the previous reaction is replaced with the new one.
+
 ## Core Concepts
 
 ### User Reaction
@@ -14,12 +16,21 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 - **User Component:** The identifier of the user performing the reaction (opaque string)
 - **Reaction Target Component:** The target being reacted to (combination of entity_type and entity_id)
 - **Uniqueness:** The combination `(user_id, entity_type, entity_id)` is unique within the system
-- **State:** Each User Reaction has exactly one state: NONE (no reaction), LIKE, or DISLIKE
+- **Single Reaction:** Each User Reaction has exactly **one** reaction type at any time (or none if no reaction exists)
+- **Reaction Type:** The current reaction type is stored as the value of the User Reaction
 
 **Constraints:**
-- Only one reaction state can exist per User Reaction at any time
+- Only **ONE** reaction can exist per User Reaction at any time
 - User Reactions are the atomic unit of user-to-target reaction tracking
-- The system maintains the current state (LIKE, DISLIKE, or NONE) for each User Reaction
+- The system maintains the current reaction type for active User Reactions
+- Absence of a User Reaction (no reaction) is represented by the absence of a record
+
+**Replacement Behavior:**
+- When a user adds reaction type A to a target where they already have reaction type B:
+  - Reaction type B is permanently removed
+  - Reaction type A is created
+  - This is a replacement (upsert), not a conversion or undo
+- The previous reaction type cannot be recovered
 
 ## Functional Requirements
 
@@ -45,16 +56,16 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 
 ### Requirement 2: User Reaction State
 
-**Description:** The system shall maintain the current reaction state for each User Reaction (user_id + Reaction Target).
+**Description:** The system shall maintain the current reaction type for each User Reaction (user_id + Reaction Target).
 
 **Requirements:**
 - For any User Reaction (user_id, entity_type, entity_id), the system shall track the current reaction type (if any)
-- The state shall be one of: NONE, LIKE, DISLIKE
-- Only one reaction state shall exist per User Reaction at any time
+- The reaction type must be one of the configured reaction types
+- Only **ONE** reaction can exist per User Reaction at any time
 
 **Behavior:**
-- Querying the reaction state for a User Reaction returns the current reaction or NONE
-- State transitions follow the rules defined in reaction_management.md
+- Querying the reaction state for a User Reaction returns the current reaction type, or empty string if no reaction exists
+- State changes follow the rules defined in reaction_management.md (replacement semantics)
 - The system shall provide efficient lookup of reaction state by user and Reaction Target
 
 ### Requirement 3: User Reaction History
@@ -84,7 +95,7 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 - Optional filter: entity_type
 
 **Outputs:**
-- Total count of User Reactions by type (e.g., 50 LIKEs, 20 DISLIKEs)
+- Total count of User Reactions per reaction type
 - Breakdown by entity type (if requested)
 
 **Requirements:**
@@ -118,7 +129,9 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 
 6. **User Identifier Immutability:** Once a User Reaction is recorded with a user identifier, that identifier cannot be changed in the reaction record. User identifier migration must be handled by the consuming application.
 
-7. **User Reaction Uniqueness:** Each combination of (user_id, entity_type, entity_id) represents a single User Reaction. Duplicate User Reactions cannot exist simultaneously.
+7. **User Reaction Uniqueness:** Each combination of (user_id, entity_type, entity_id) represents a single User Reaction. Duplicate User Reactions cannot exist simultaneously. Only one reaction type is stored per User Reaction.
+
+8. **Single Reaction Per Target:** Users cannot have multiple simultaneous reactions on the same target. Adding a new reaction replaces any existing reaction.
 
 ## Relationships with Other Functional Blocks
 
@@ -133,6 +146,7 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 |------|--------|-------------|
 | 2026-03-21 | Initial | First version of user interactions specification |
 | 2026-03-21 | Update | Introduced User Reaction concept; updated all requirements to use User Reaction terminology |
+| 2026-03-22 | Major | Updated to reflect single reaction per user policy; documented replacement behavior |
 
 ## Acceptance Criteria
 
@@ -140,7 +154,7 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 2. **AC2:** The system rejects empty user identifiers
 3. **AC3:** The system rejects user identifiers exceeding 256 characters
 4. **AC4:** User identifiers are treated as opaque (no format validation beyond length)
-5. **AC5:** Querying User Reaction state returns NONE, LIKE, or DISLIKE for any User Reaction
+5. **AC5:** Querying User Reaction state returns reaction type or empty string if no reaction exists
 6. **AC6:** User Reaction history includes all current User Reactions for the user
 7. **AC7:** User Reaction history supports pagination (limit/offset)
 8. **AC8:** User Reaction history supports filtering by entity_type component of Reaction Target
@@ -148,4 +162,5 @@ A **User Reaction** is the unique combination of a user identifier and a Reactio
 10. **AC10:** User counts by type are accurate and consistent with stored User Reaction data
 11. **AC11:** Anonymous user identifiers are processed identically to authenticated user identifiers
 12. **AC12:** No authentication or session validation is performed on user identifiers
-13. **AC13:** Each User Reaction (user_id + Reaction Target) can have at most one active reaction state
+13. **AC13:** Each User Reaction (user_id + Reaction Target) can have at most one active reaction
+14. **AC14:** Adding a new reaction to a target with an existing reaction replaces the previous reaction
