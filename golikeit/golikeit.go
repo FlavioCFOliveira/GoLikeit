@@ -2,6 +2,7 @@ package golikeit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/FlavioCFOliveira/GoLikeit/events"
 	pag "github.com/FlavioCFOliveira/GoLikeit/pagination"
 	"github.com/FlavioCFOliveira/GoLikeit/ratelimit"
+	"github.com/FlavioCFOliveira/GoLikeit/resilience"
 )
 
 // reactionTypePattern is the validation pattern for reaction types.
@@ -167,9 +169,10 @@ type Client struct {
 	storage         ReactionStorage
 	cache           cache.Cache
 	eventBus        *events.Bus
-	auditor         audit.Auditor
-	limiter         *ratelimit.Limiter
-	paginationCfg   PaginationConfig
+	auditor        audit.Auditor
+	limiter        *ratelimit.Limiter
+	circuitBreaker *resilience.CircuitBreaker
+	paginationCfg  PaginationConfig
 
 	closed    bool
 	closedMu  sync.RWMutex
@@ -215,11 +218,12 @@ func New(config Config) (*Client, error) {
 		config:           config,
 		reactionTypes:    reactionTypeSet,
 		reactionTypeList: append([]string(nil), config.ReactionTypes...), // Copy
-		eventBus:        eventBus,
-		cache:           reactionCache,
-		paginationCfg:   config.Pagination,
-		auditor:         audit.NewNullAuditor(),
-		limiter:         rateLimiter,
+		eventBus:         eventBus,
+		cache:            reactionCache,
+		paginationCfg:    config.Pagination,
+		auditor:          audit.NewNullAuditor(),
+		limiter:          rateLimiter,
+		circuitBreaker:   resilience.NewCircuitBreaker(resilience.DefaultCircuitBreakerConfig()),
 	}
 
 	return client, nil
@@ -236,6 +240,18 @@ func (c *Client) isClosed() bool {
 func (c *Client) checkClosed() error {
 	if c.isClosed() {
 		return ErrClientClosed
+	}
+	return nil
+}
+
+// executeStorage runs fn through the circuit breaker.
+// If the circuit is open, ErrStorageUnavailable is returned immediately.
+func (c *Client) executeStorage(fn func() error) error {
+	if err := c.circuitBreaker.Execute(fn); err != nil {
+		if errors.Is(err, resilience.ErrCircuitOpen) {
+			return ErrStorageUnavailable
+		}
+		return err
 	}
 	return nil
 }
@@ -320,8 +336,12 @@ func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, 
 		return false, ErrStorageUnavailable
 	}
 
-	isReplaced, err := c.storage.AddReaction(ctx, userID, target, reactionType)
-	if err != nil {
+	var isReplaced bool
+	if err := c.executeStorage(func() error {
+		var e error
+		isReplaced, e = c.storage.AddReaction(ctx, userID, target, reactionType)
+		return e
+	}); err != nil {
 		return false, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
 	}
 
@@ -376,7 +396,9 @@ func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityI
 		return ErrStorageUnavailable
 	}
 
-	if err := c.storage.RemoveReaction(ctx, userID, target); err != nil {
+	if err := c.executeStorage(func() error {
+		return c.storage.RemoveReaction(ctx, userID, target)
+	}); err != nil {
 		return err
 	}
 
@@ -432,9 +454,13 @@ func (c *Client) GetUserReaction(ctx context.Context, userID, entityType, entity
 		}
 	}
 
-	reactionType, err := c.storage.GetUserReaction(ctx, userID, target)
-	if err != nil {
-		if err == ErrReactionNotFound {
+	var reactionType string
+	if err := c.executeStorage(func() error {
+		var e error
+		reactionType, e = c.storage.GetUserReaction(ctx, userID, target)
+		return e
+	}); err != nil {
+		if errors.Is(err, ErrReactionNotFound) {
 			return "", nil
 		}
 		return "", err
@@ -502,8 +528,12 @@ func (c *Client) GetEntityReactionCounts(ctx context.Context, entityType, entity
 		}
 	}
 
-	counts, err := c.storage.GetEntityCounts(ctx, target)
-	if err != nil {
+	var counts EntityCounts
+	if err := c.executeStorage(func() error {
+		var e error
+		counts, e = c.storage.GetEntityCounts(ctx, target)
+		return e
+	}); err != nil {
 		return nil, 0, err
 	}
 
@@ -560,8 +590,12 @@ func (c *Client) GetEntityReactionDetail(ctx context.Context, entityType, entity
 
 	// Get recent users if requested
 	if options.MaxRecentUsers > 0 {
-		recent, err := c.storage.GetRecentReactions(ctx, target, options.MaxRecentUsers*len(c.reactionTypeList))
-		if err != nil {
+		var recent []RecentUserReaction
+		if err := c.executeStorage(func() error {
+			var e error
+			recent, e = c.storage.GetRecentReactions(ctx, target, options.MaxRecentUsers*len(c.reactionTypeList))
+			return e
+		}); err != nil {
 			return EntityReactionDetail{}, err
 		}
 
@@ -579,8 +613,12 @@ func (c *Client) GetEntityReactionDetail(ctx context.Context, entityType, entity
 	}
 
 	// Get last reaction time
-	lastTime, err := c.storage.GetLastReactionTime(ctx, target)
-	if err != nil {
+	var lastTime *time.Time
+	if err := c.executeStorage(func() error {
+		var e error
+		lastTime, e = c.storage.GetLastReactionTime(ctx, target)
+		return e
+	}); err != nil {
 		return EntityReactionDetail{}, err
 	}
 	detail.LastReaction = lastTime
@@ -611,8 +649,13 @@ func (c *Client) GetUserReactions(ctx context.Context, userID string, pagination
 		return PaginatedResult[UserReaction]{}, ErrStorageUnavailable
 	}
 
-	reactions, total, err := c.storage.GetUserReactions(ctx, userID, pagination)
-	if err != nil {
+	var reactions []UserReaction
+	var total int64
+	if err := c.executeStorage(func() error {
+		var e error
+		reactions, total, e = c.storage.GetUserReactions(ctx, userID, pagination)
+		return e
+	}); err != nil {
 		return PaginatedResult[UserReaction]{}, err
 	}
 
@@ -635,8 +678,12 @@ func (c *Client) GetUserReactionCounts(ctx context.Context, userID string, entit
 		return nil, ErrStorageUnavailable
 	}
 
-	counts, err := c.storage.GetUserReactionCounts(ctx, userID, entityTypeFilter)
-	if err != nil {
+	var counts map[string]int64
+	if err := c.executeStorage(func() error {
+		var e error
+		counts, e = c.storage.GetUserReactionCounts(ctx, userID, entityTypeFilter)
+		return e
+	}); err != nil {
 		return nil, err
 	}
 
@@ -670,8 +717,13 @@ func (c *Client) GetUserReactionsByType(ctx context.Context, userID, reactionTyp
 		return PaginatedResult[UserReaction]{}, ErrStorageUnavailable
 	}
 
-	reactions, total, err := c.storage.GetUserReactionsByType(ctx, userID, reactionType, pagination)
-	if err != nil {
+	var reactions []UserReaction
+	var total int64
+	if err := c.executeStorage(func() error {
+		var e error
+		reactions, total, e = c.storage.GetUserReactionsByType(ctx, userID, reactionType, pagination)
+		return e
+	}); err != nil {
 		return PaginatedResult[UserReaction]{}, err
 	}
 
@@ -702,8 +754,13 @@ func (c *Client) GetEntityReactions(ctx context.Context, entityType, entityID st
 		return PaginatedResult[EntityReaction]{}, ErrStorageUnavailable
 	}
 
-	reactions, total, err := c.storage.GetEntityReactions(ctx, target, pagination)
-	if err != nil {
+	var reactions []EntityReaction
+	var total int64
+	if err := c.executeStorage(func() error {
+		var e error
+		reactions, total, e = c.storage.GetEntityReactions(ctx, target, pagination)
+		return e
+	}); err != nil {
 		return PaginatedResult[EntityReaction]{}, err
 	}
 
@@ -810,6 +867,12 @@ func (c *Client) GetMultipleUserReactions(ctx context.Context, userIDs []string,
 // EventBus returns the underlying event bus for custom event handling.
 func (c *Client) EventBus() *events.Bus {
 	return c.eventBus
+}
+
+// CircuitBreakerState returns the current state of the storage circuit breaker.
+// This can be used for health checks and observability.
+func (c *Client) CircuitBreakerState() resilience.CircuitBreakerState {
+	return c.circuitBreaker.State()
 }
 
 // Close releases all resources held by the client.

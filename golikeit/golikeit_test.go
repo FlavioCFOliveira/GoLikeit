@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/FlavioCFOliveira/GoLikeit/pagination"
+	"github.com/FlavioCFOliveira/GoLikeit/resilience"
 )
 
 // mockStorage is a test double for ReactionStorage.
@@ -933,5 +934,51 @@ func TestClient_CacheIntegration(t *testing.T) {
 	_, _ = client.GetUserReaction(ctx, "user123", "photo", "photo456")
 	if mock.getUserReactionCalled {
 		t.Error("Second call should hit cache, not storage")
+	}
+}
+
+// TestCircuitBreaker_InitialState verifies circuit starts closed.
+func TestCircuitBreaker_InitialState(t *testing.T) {
+	client, _ := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}})
+	if got := client.CircuitBreakerState(); got != resilience.StateClosed {
+		t.Errorf("initial circuit state = %v, want %v", got, resilience.StateClosed)
+	}
+}
+
+// TestCircuitBreaker_OpensAfterFailureThreshold verifies Closed → Open transition.
+func TestCircuitBreaker_OpensAfterFailureThreshold(t *testing.T) {
+	client, mock := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}})
+	storageErr := errors.New("storage unavailable")
+	mock.addReactionErr = storageErr
+
+	ctx := context.Background()
+	// Default failure threshold is 5 — trigger it.
+	for i := 0; i < 5; i++ {
+		_, _ = client.AddReaction(ctx, "user1", "post", "post1", "LIKE")
+	}
+
+	if got := client.CircuitBreakerState(); got != resilience.StateOpen {
+		t.Errorf("after 5 failures circuit state = %v, want %v", got, resilience.StateOpen)
+	}
+}
+
+// TestCircuitBreaker_ReturnsStorageUnavailableWhenOpen verifies ErrStorageUnavailable is returned
+// when the circuit is open.
+func TestCircuitBreaker_ReturnsStorageUnavailableWhenOpen(t *testing.T) {
+	client, mock := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}})
+	storageErr := errors.New("storage down")
+	mock.addReactionErr = storageErr
+
+	ctx := context.Background()
+	// Trip the circuit.
+	for i := 0; i < 5; i++ {
+		_, _ = client.AddReaction(ctx, "user1", "post", "post1", "LIKE")
+	}
+
+	// Next call should return ErrStorageUnavailable without reaching storage.
+	mock.addReactionErr = nil
+	_, err := client.AddReaction(ctx, "user1", "post", "post1", "LIKE")
+	if !errors.Is(err, ErrStorageUnavailable) {
+		t.Errorf("open circuit error = %v, want ErrStorageUnavailable", err)
 	}
 }
