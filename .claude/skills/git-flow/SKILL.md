@@ -180,7 +180,7 @@ Closes: #456
 
 **FORBIDDEN to include in any message:**
 - `Co-Authored-By:`
-- `Claude Opus 4.6`
+- `Claude Opus`
 - `<noreply@anthropic.com>`
 - `Generated with Claude`
 - `Claude Code`
@@ -370,6 +370,8 @@ Follow **Conventional Commits** specification:
 ```
 <type>(<scope>): <subject>
 
+<task summary>
+
 <body>
 
 <footer>
@@ -389,6 +391,8 @@ Follow **Conventional Commits** specification:
 **Example:**
 ```
 feat(auth): implement JWT token validation middleware
+
+summary: based on the task functional and technical requirements
 
 Adds JWT middleware to verify tokens on protected routes.
 Configures 15-minute expiration with refresh mechanism for long sessions.

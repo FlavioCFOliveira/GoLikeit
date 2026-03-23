@@ -206,3 +206,80 @@ When coordinating sprint execution, task ordering may be relevant for:
 ## Task Types
 
 USER_STORY, TASK, BUG, SUB_TASK, EPIC, REFACTOR, CHORE, SPIKE, DESIGN_UX, IMPROVEMENT
+
+## Ponto de Situação (PDS)
+
+Quando o utilizador solicitar um ponto de situação do roadmap (pds, ponto-de-situacao, status report), gerar um relatório estruturado seguindo o template PDS.md, procurando responder ao máximo das informações referenciadas no template.
+
+### Fluxo de Geração do PDS
+
+1. **Obter Sprint Atual**: `rmp sprint list -r golikeit --status STARTED`
+2. **Coletar Estatísticas**: `rmp sprint stats -r golikeit <sprint_id>`
+3. **Detalhes do Sprint**: `rmp sprint show -r golikeit <sprint_id>`
+4. **Listar Tarefas**: `rmp sprint tasks -r golikeit <sprint_id>`
+5. **Listar Todos Sprints**: `rmp sprint ls -r golikeit`
+
+### Comandos CLI para PDS
+
+```bash
+# Sprint atual (STARTED)
+rmp sprint list -r golikeit --status STARTED
+
+# Estatísticas do sprint
+rmp sprint stats -r golikeit <sprint-id>
+rmp sprint show -r golikeit <sprint-id>
+
+# Tarefas do sprint
+rmp sprint tasks -r golikeit <sprint-id>
+
+# Todos os sprints
+rmp sprint ls -r golikeit
+
+# Tasks por status (para métricas)
+rmp task list -r golikeit -s COMPLETED
+rmp task list -r golikeit -s DOING
+rmp task list -r golikeit -s PENDING
+```
+
+### Estrutura do Relatório PDS
+
+Usar o template PDS.md como referência para gerar as seguintes secções:
+
+1. **Resumo Executivo**
+   - Sprint atual: tasks concluídas, em andamento, pendentes
+   - Sprints pendentes: contagem e total de tasks
+   - Sprints concluídos: contagem e total de tasks
+   - Percentagem global de conclusão
+
+2. **Sprint Atual**
+   - Título do sprint
+   - Data de início (e fim se disponível)
+   - Resumo dos objetivos
+   - Resumo das tasks em andamento e concluídas
+
+3. **Tabela de Tasks do Sprint**
+   - ID, Título, Criticidade, Prioridade, Estado, Conclusão
+   - Ordenar por estado (COMPLETED → IN PROGRESS → PENDING) e prioridade
+
+4. **Próximos Sprints**
+   - Listar sprints planejados (status PENDING)
+   - ID, Título, Número de tasks
+
+5. **Sprints Concluídos**
+   - Listar sprints concluídos (status COMPLETED)
+   - ID, Título, Número de tasks, Data de início, Data de conclusão
+
+6. **Backlog**
+   - Tasks em status BACKLOG não associadas a sprints
+   - ID, Título, Criticidade, Prioridade
+
+### Métricas a Calcular
+
+- **Percentagem do Sprint**: (completed / total) × 100
+- **Percentagem Global**: (tasks completed / total tasks no roadmap) × 100
+- **Velocidade**: tasks completadas por sprint (se aplicável)
+- **Distribuição de Estado**: contagem por status (BACKLOG, SPRINT, DOING, TESTING, COMPLETED)
+
+### Formato de Saída
+
+Gerar o relatório em Markdown profissional, em português de Portugal, seguindo estritamente o formato do template PDS.md.
