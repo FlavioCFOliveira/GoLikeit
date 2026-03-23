@@ -64,7 +64,7 @@ func TestValidateEntityType_Boundaries(t *testing.T) {
 		{"valid_lowercase", "blog_post", false},
 		{"valid_with_numbers", "item_123", false},
 		{"uppercase_not_allowed", "BlogPost", true},
-		{"hyphen_not_allowed", "blog-post", true},
+		{"hyphen_allowed", "blog-post", false},
 		{"space_not_allowed", "blog post", true},
 		{"max_length_exact", strings.Repeat("a", 64), false},
 		{"max_length_exceeded", strings.Repeat("a", 65), true},
@@ -650,9 +650,9 @@ func FuzzValidateEntityType(f *testing.F) {
 			t.Error("Input exceeding max length should return error")
 		}
 
-		// Should only allow lowercase alphanumeric and underscore
+		// Should only allow lowercase alphanumeric, underscore, and hyphen
 		for _, r := range input {
-			if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '_' {
+			if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '_' && r != '-' {
 				if err == nil {
 					t.Errorf("Invalid character %q should return error", r)
 				}

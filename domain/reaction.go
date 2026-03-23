@@ -12,8 +12,8 @@ import (
 
 // Validation patterns for domain fields.
 const (
-	// EntityTypePattern matches lowercase alphanumeric with underscores.
-	EntityTypePattern = `^[a-z0-9_]+$`
+	// EntityTypePattern matches lowercase alphanumeric with underscores and hyphens.
+	EntityTypePattern = `^[a-z0-9_-]+$`
 
 	// ReactionTypePattern matches uppercase alphanumeric with underscores and hyphens.
 	ReactionTypePattern = `^[A-Z0-9_-]+$`
