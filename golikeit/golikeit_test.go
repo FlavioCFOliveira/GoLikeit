@@ -19,6 +19,8 @@ type mockStorage struct {
 	getUserReactionCalled bool
 	getEntityCountsCalled bool
 
+	addReactionCallCount  int
+	addReactionFn         func(ctx context.Context, userID string, target EntityTarget, reactionType string) (bool, error)
 	addReactionResult     bool
 	addReactionErr          error
 	removeReactionErr       error
@@ -46,6 +48,10 @@ type mockStorage struct {
 
 func (m *mockStorage) AddReaction(ctx context.Context, userID string, target EntityTarget, reactionType string) (bool, error) {
 	m.addReactionCalled = true
+	m.addReactionCallCount++
+	if m.addReactionFn != nil {
+		return m.addReactionFn(ctx, userID, target, reactionType)
+	}
 	return m.addReactionResult, m.addReactionErr
 }
 
@@ -1194,5 +1200,91 @@ func TestHealth_NoStorage(t *testing.T) {
 	h := client.Health(context.Background())
 	if h.Storage.Status != StatusDown {
 		t.Errorf("nil storage status = %v, want DOWN", h.Storage.Status)
+	}
+}
+
+// TestRetry_TransientErrorIsRetried verifies that transient storage errors trigger retries.
+func TestRetry_TransientErrorIsRetried(t *testing.T) {
+	transientErr := errors.New("connection reset by peer")
+
+	// Use zero backoff to make the test fast.
+	rp := resilience.RetryPolicy{
+		MaxAttempts:    3,
+		InitialBackoff: 0,
+		MaxBackoff:     0,
+		Jitter:         0,
+	}
+	client, mock := newTestClient(t, Config{
+		ReactionTypes: []string{"LIKE"},
+		RetryPolicy:   &rp,
+	})
+	mock.addReactionFn = func(ctx context.Context, userID string, target EntityTarget, reactionType string) (bool, error) {
+		return false, transientErr
+	}
+
+	_, err := client.AddReaction(context.Background(), "user1", "post", "p1", "LIKE")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if mock.addReactionCallCount != 3 {
+		t.Errorf("expected 3 attempts, got %d", mock.addReactionCallCount)
+	}
+}
+
+// TestRetry_NonRetryableErrorNotRetried verifies that ErrReactionNotFound is not retried.
+// Uses a custom addReactionFn that returns ErrReactionNotFound and counts calls.
+// Even though AddReaction wraps the error as ErrStorageUnavailable, the retry layer
+// must NOT retry ErrReactionNotFound, so only 1 storage call is made.
+func TestRetry_NonRetryableErrorNotRetried(t *testing.T) {
+	rp := resilience.RetryPolicy{
+		MaxAttempts:    3,
+		InitialBackoff: 0,
+		MaxBackoff:     0,
+		Jitter:         0,
+	}
+	client, mock := newTestClient(t, Config{
+		ReactionTypes: []string{"LIKE"},
+		RetryPolicy:   &rp,
+	})
+	mock.addReactionFn = func(ctx context.Context, userID string, target EntityTarget, reactionType string) (bool, error) {
+		return false, ErrReactionNotFound
+	}
+
+	_, err := client.AddReaction(context.Background(), "user1", "post", "p1", "LIKE")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	// ErrReactionNotFound is non-retryable — only 1 storage attempt should be made.
+	if mock.addReactionCallCount != 1 {
+		t.Errorf("expected 1 attempt (no retry for ErrReactionNotFound), got %d", mock.addReactionCallCount)
+	}
+}
+
+// TestRetry_ContextCancellationStopsRetry verifies that context cancellation stops the retry loop.
+func TestRetry_ContextCancellationStopsRetry(t *testing.T) {
+	rp := resilience.RetryPolicy{
+		MaxAttempts:    10,
+		InitialBackoff: 50 * time.Millisecond,
+		MaxBackoff:     100 * time.Millisecond,
+		Jitter:         0,
+	}
+	client, mock := newTestClient(t, Config{
+		ReactionTypes: []string{"LIKE"},
+		RetryPolicy:   &rp,
+	})
+	mock.addReactionFn = func(ctx context.Context, userID string, target EntityTarget, reactionType string) (bool, error) {
+		return false, errors.New("transient")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+
+	_, err := client.AddReaction(ctx, "user1", "post", "p1", "LIKE")
+	if err == nil {
+		t.Fatal("expected error due to context cancellation")
+	}
+	// Should not have exhausted all 10 retries within 80ms.
+	if mock.addReactionCallCount >= 10 {
+		t.Errorf("expected context to stop retries before 10 attempts, got %d", mock.addReactionCallCount)
 	}
 }
