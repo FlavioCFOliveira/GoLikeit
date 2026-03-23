@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlavioCFOliveira/GoLikeit/audit"
 	"github.com/FlavioCFOliveira/GoLikeit/cache"
 	"github.com/FlavioCFOliveira/GoLikeit/events"
 	pag "github.com/FlavioCFOliveira/GoLikeit/pagination"
@@ -165,6 +166,7 @@ type Client struct {
 	storage         ReactionStorage
 	cache           cache.Cache
 	eventBus        *events.Bus
+	auditor         audit.Auditor
 	paginationCfg   PaginationConfig
 
 	closed    bool
@@ -211,6 +213,7 @@ func New(config Config) (*Client, error) {
 		eventBus:        eventBus,
 		cache:           reactionCache,
 		paginationCfg:   config.Pagination,
+		auditor:         audit.NewNullAuditor(),
 	}
 
 	return client, nil
@@ -315,6 +318,14 @@ func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, 
 	// Invalidate cache
 	c.invalidateCacheForTarget(userID, target)
 
+	// Fire-and-forget audit log — must not block or fail the primary operation.
+	auditOp := audit.OperationAdd
+	if isReplaced {
+		auditOp = audit.OperationReplace
+	}
+	auditEntry := audit.NewEntry(auditOp, userID, entityType, entityID, reactionType, "")
+	go func() { _ = c.auditor.LogOperation(context.Background(), auditEntry) }()
+
 	// Emit event
 	c.eventBus.Emit(events.ReactionEvent{
 		Event: events.Event{
@@ -357,6 +368,10 @@ func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityI
 
 	// Invalidate cache
 	c.invalidateCacheForTarget(userID, target)
+
+	// Fire-and-forget audit log — must not block or fail the primary operation.
+	auditEntry := audit.NewEntry(audit.OperationRemove, userID, entityType, entityID, "", "")
+	go func() { _ = c.auditor.LogOperation(context.Background(), auditEntry) }()
 
 	// Emit event
 	c.eventBus.Emit(events.ReactionEvent{
