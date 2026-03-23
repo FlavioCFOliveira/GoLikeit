@@ -519,3 +519,11 @@ func (m *MariaDBStorage) Close() error {
 	}
 	return nil
 }
+
+// Ping verifies connectivity to the MariaDB server.
+func (m *MariaDBStorage) Ping(ctx context.Context) error {
+	if m.db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+	return m.db.PingContext(ctx)
+}

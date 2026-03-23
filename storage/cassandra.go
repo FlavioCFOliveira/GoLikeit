@@ -577,3 +577,12 @@ func (c *CassandraStorage) Close() error {
 	}
 	return nil
 }
+
+// Ping verifies connectivity to the Cassandra cluster.
+func (c *CassandraStorage) Ping(_ context.Context) error {
+	if c.session == nil {
+		return fmt.Errorf("session is nil")
+	}
+	// A lightweight query that validates connectivity without touching data.
+	return c.session.Query("SELECT now() FROM system.local").Exec()
+}

@@ -516,6 +516,14 @@ func (s *SQLiteStorage) Close() error {
 	return nil
 }
 
+// Ping verifies connectivity to the SQLite database.
+func (s *SQLiteStorage) Ping(ctx context.Context) error {
+	if s.db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+	return s.db.PingContext(ctx)
+}
+
 // generateUUID generates a simple UUID for SQLite (since SQLite doesn't have built-in UUID).
 // In production, use github.com/google/uuid or similar.
 func generateUUID() string {

@@ -1139,3 +1139,60 @@ func TestLogging_AddReactionLogsError(t *testing.T) {
 		t.Errorf("expected ERROR log 'add_reaction failed', got %v", lg.errors)
 	}
 }
+
+// pingableStorage wraps mockStorage to implement the Pinger interface.
+type pingableStorage struct {
+	mockStorage
+	pingErr error
+}
+
+func (p *pingableStorage) Ping(_ context.Context) error { return p.pingErr }
+
+// newHealthClient builds a minimal Client suitable for Health() tests.
+func newHealthClient(t *testing.T) *Client {
+	t.Helper()
+	client, err := New(Config{ReactionTypes: []string{"LIKE"}})
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	return client
+}
+
+// TestHealth_StorageUp verifies that Health() reports StatusUp when Ping succeeds.
+func TestHealth_StorageUp(t *testing.T) {
+	client := newHealthClient(t)
+	client.storage = &pingableStorage{}
+
+	h := client.Health(context.Background())
+	if h.Storage.Status != StatusUp {
+		t.Errorf("storage status = %v, want UP", h.Storage.Status)
+	}
+	if h.Overall != StatusUp {
+		t.Errorf("overall status = %v, want UP", h.Overall)
+	}
+}
+
+// TestHealth_StorageDown verifies that Health() reports StatusDown when Ping fails.
+func TestHealth_StorageDown(t *testing.T) {
+	client := newHealthClient(t)
+	client.storage = &pingableStorage{pingErr: errors.New("connection refused")}
+
+	h := client.Health(context.Background())
+	if h.Storage.Status != StatusDown {
+		t.Errorf("storage status = %v, want DOWN", h.Storage.Status)
+	}
+	if h.Overall != StatusDown {
+		t.Errorf("overall status = %v, want DOWN", h.Overall)
+	}
+}
+
+// TestHealth_NoStorage verifies Health() reports DOWN when storage is nil.
+func TestHealth_NoStorage(t *testing.T) {
+	client := newHealthClient(t)
+	// storage is nil by default after New()
+
+	h := client.Health(context.Background())
+	if h.Storage.Status != StatusDown {
+		t.Errorf("nil storage status = %v, want DOWN", h.Storage.Status)
+	}
+}

@@ -537,3 +537,16 @@ func (p *PostgreSQLStorage) Close() error {
 	}
 	return nil
 }
+
+// Ping verifies connectivity to the PostgreSQL server.
+func (p *PostgreSQLStorage) Ping(ctx context.Context) error {
+	if p.pool == nil {
+		return fmt.Errorf("connection pool is nil")
+	}
+	conn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+	return conn.Ping(ctx)
+}

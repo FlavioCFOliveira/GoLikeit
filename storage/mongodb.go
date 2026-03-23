@@ -597,3 +597,11 @@ func (m *MongoDBStorage) Close() error {
 	}
 	return nil
 }
+
+// Ping verifies connectivity to the MongoDB server.
+func (m *MongoDBStorage) Ping(ctx context.Context) error {
+	if m.client == nil {
+		return fmt.Errorf("client is nil")
+	}
+	return m.client.Ping(ctx, nil)
+}
