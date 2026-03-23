@@ -32,7 +32,7 @@ const (
 	MaxPaginationLimit = 100
 
 	// MaxPaginationOffset is the maximum allowed pagination offset.
-	MaxPaginationOffset = 10000
+	MaxPaginationOffset = 100
 )
 
 // Validation patterns.
@@ -317,7 +317,7 @@ type PaginationConfig struct {
 	// MaxLimit is the maximum allowed items per page. Default: 100.
 	MaxLimit int
 
-	// MaxOffset is the maximum allowed offset. Default: 10000.
+	// MaxOffset is the maximum allowed offset. Default: 100.
 	MaxOffset int
 }
 

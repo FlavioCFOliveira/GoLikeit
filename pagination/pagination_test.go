@@ -13,8 +13,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.MaxLimit != 100 {
 		t.Errorf("DefaultConfig().MaxLimit = %d, want 100", cfg.MaxLimit)
 	}
-	if cfg.MaxOffset != 10000 {
-		t.Errorf("DefaultConfig().MaxOffset = %d, want 10000", cfg.MaxOffset)
+	if cfg.MaxOffset != 100 {
+		t.Errorf("DefaultConfig().MaxOffset = %d, want 100", cfg.MaxOffset)
 	}
 }
 
@@ -22,7 +22,7 @@ func TestPagination_Validate(t *testing.T) {
 	cfg := Config{
 		DefaultLimit: 25,
 		MaxLimit:     100,
-		MaxOffset:    10000,
+		MaxOffset:    100,
 	}
 
 	tests := []struct {
@@ -45,9 +45,9 @@ func TestPagination_Validate(t *testing.T) {
 		},
 		{
 			name:    "valid pagination with offset",
-			p:       Pagination{Limit: 50, Offset: 100},
+			p:       Pagination{Limit: 50, Offset: 50},
 			wantErr: false,
-			want:    Pagination{Limit: 50, Offset: 100},
+			want:    Pagination{Limit: 50, Offset: 50},
 		},
 		{
 			name:    "negative limit",
@@ -66,7 +66,7 @@ func TestPagination_Validate(t *testing.T) {
 		},
 		{
 			name:    "offset exceeds max",
-			p:       Pagination{Limit: 25, Offset: 10001},
+			p:       Pagination{Limit: 25, Offset: 101},
 			wantErr: true,
 		},
 		{
@@ -77,9 +77,9 @@ func TestPagination_Validate(t *testing.T) {
 		},
 		{
 			name:    "offset at max boundary",
-			p:       Pagination{Limit: 25, Offset: 10000},
+			p:       Pagination{Limit: 25, Offset: 100},
 			wantErr: false,
-			want:    Pagination{Limit: 25, Offset: 10000},
+			want:    Pagination{Limit: 25, Offset: 100},
 		},
 	}
 
@@ -464,7 +464,7 @@ func TestPagination_ToLimitOffset(t *testing.T) {
 	cfg := Config{
 		DefaultLimit: 25,
 		MaxLimit:     100,
-		MaxOffset:    10000,
+		MaxOffset:    100,
 	}
 
 	tests := []struct {
@@ -475,27 +475,27 @@ func TestPagination_ToLimitOffset(t *testing.T) {
 	}{
 		{
 			name:       "normal values",
-			p:          Pagination{Limit: 50, Offset: 100},
+			p:          Pagination{Limit: 50, Offset: 50},
 			wantLimit:  50,
-			wantOffset: 100,
+			wantOffset: 50,
 		},
 		{
 			name:       "zero limit uses default",
-			p:          Pagination{Limit: 0, Offset: 100},
+			p:          Pagination{Limit: 0, Offset: 50},
 			wantLimit:  25,
-			wantOffset: 100,
+			wantOffset: 50,
 		},
 		{
 			name:       "limit capped at max",
-			p:          Pagination{Limit: 200, Offset: 100},
+			p:          Pagination{Limit: 200, Offset: 50},
 			wantLimit:  100,
-			wantOffset: 100,
+			wantOffset: 50,
 		},
 		{
 			name:       "offset capped at max",
-			p:          Pagination{Limit: 50, Offset: 20000},
+			p:          Pagination{Limit: 50, Offset: 200},
 			wantLimit:  50,
-			wantOffset: 10000,
+			wantOffset: 100,
 		},
 	}
 

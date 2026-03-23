@@ -33,12 +33,12 @@ type Config struct {
 // DefaultConfig returns a Config with sensible defaults.
 // DefaultLimit: 25
 // MaxLimit: 100
-// MaxOffset: 10000
+// MaxOffset: 100
 func DefaultConfig() Config {
 	return Config{
 		DefaultLimit: 25,
 		MaxLimit:     100,
-		MaxOffset:    10000,
+		MaxOffset:    100,
 	}
 }
 
