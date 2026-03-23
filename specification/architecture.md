@@ -16,6 +16,7 @@ The system is organized into two primary layers.
 - Orchestrates data layer operations
 - Defines the public API
 - Enforces single-reaction-per-user constraint
+- **Implementation:** `golikeit.Client` is the canonical Business Layer implementation. It is the primary entry point for library consumers. The `business` package provides supporting `Config` and error types but does not define a separate interface — `golikeit.Client` directly embodies the Business Layer contract.
 
 **Data Layer:**
 - Handles all database interactions
@@ -32,11 +33,15 @@ The system is organized into two primary layers.
 
 Each layer exposes capabilities through interfaces.
 
-**Business Layer Interface:**
-- AddReaction(entity_type, entity_id, user_id, reaction_type) (isReplacement bool, error)
-- RemoveReaction(entity_type, entity_id, user_id) error
-- GetUserReaction(entity_type, entity_id, user_id) (reaction_type string, error)
-- GetEntityReactionCounts(entity_type, entity_id) (counts map[string]int64, total int64, error)
+**Business Layer Contract (implemented by `golikeit.Client`):**
+- AddReaction(ctx, userID, entityType, entityID, reactionType) (isReplacement bool, error)
+- RemoveReaction(ctx, userID, entityType, entityID) error
+- GetUserReaction(ctx, userID, entityType, entityID) (reactionType string, error)
+- GetEntityCounts(ctx, target) (EntityCounts, error)
+- GetUserReactions(ctx, userID, filters, pagination) ([]UserReaction, int64, error)
+- GetEntityReactionDetail(ctx, target, maxRecentUsers) (EntityReactionDetail, error)
+- Health(ctx) HealthStatus
+- Close() error
 
 **Data Layer Interface:**
 - CreateReaction(user_id, entity_type, entity_id, reaction_type) error
