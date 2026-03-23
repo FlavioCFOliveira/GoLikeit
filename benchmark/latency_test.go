@@ -4,6 +4,7 @@ package benchmark
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -231,15 +232,18 @@ func TestLatencyConsistency(t *testing.T) {
 		t.Logf("Window %d: p95=%v", w, stats.P95)
 	}
 
-	// Check variance between windows
+	// Check variance between windows using coefficient of variation (CV = stdDev / mean).
+	// CV is dimensionless: a value < 0.5 means relative std dev is within 50% of mean.
 	if len(p95Values) > 1 {
 		meanP95 := calculateMean(p95Values)
 		variance := calculateVariance(p95Values, meanP95)
+		stdDev := math.Sqrt(variance)
 
-		// Coefficient of variation should be reasonable (relaxed for in-memory storage)
-		cv := variance / meanP95
-		if cv > 1.0 {
-			t.Errorf("High variance in p95 latency across windows: CV=%.2f", cv)
+		if meanP95 > 0 {
+			cv := stdDev / meanP95
+			if cv > 0.5 {
+				t.Errorf("High variance in p95 latency across windows: CV=%.2f (stdDev=%.0fns, mean=%.0fns)", cv, stdDev, meanP95)
+			}
 		}
 	}
 }
