@@ -16,6 +16,7 @@ import (
 	pag "github.com/FlavioCFOliveira/GoLikeit/pagination"
 	"github.com/FlavioCFOliveira/GoLikeit/ratelimit"
 	"github.com/FlavioCFOliveira/GoLikeit/resilience"
+	"github.com/FlavioCFOliveira/GoLikeit/tracing"
 )
 
 // reactionTypePattern is the validation pattern for reaction types.
@@ -104,6 +105,10 @@ type Config struct {
 	// RetryPolicy configures retry behavior for transient storage failures.
 	// If nil, a default policy (3 attempts, 100ms initial backoff, 5s max) is used.
 	RetryPolicy *resilience.RetryPolicy
+
+	// Tracer provides distributed tracing spans for key operations.
+	// If nil, a no-op tracer with zero overhead is used.
+	Tracer tracing.Tracer
 }
 
 // validateReactionTypes validates the reaction type configuration.
@@ -185,6 +190,7 @@ type Client struct {
 	limiter        *ratelimit.Limiter
 	circuitBreaker *resilience.CircuitBreaker
 	retryPolicy    resilience.RetryPolicy
+	tracer         tracing.Tracer
 	collector      metrics.MetricsCollector
 	logger         logging.Logger
 	paginationCfg  PaginationConfig
@@ -241,6 +247,12 @@ func New(config Config) (*Client, error) {
 		logger = &logging.NoopLogger{}
 	}
 
+	// Use provided tracer or fall back to no-op.
+	tr := config.Tracer
+	if tr == nil {
+		tr = tracing.NoopTracer{}
+	}
+
 	// Configure retry policy.
 	retryPolicy := resilience.RetryPolicy{
 		MaxAttempts:    3,
@@ -263,6 +275,7 @@ func New(config Config) (*Client, error) {
 		limiter:          rateLimiter,
 		circuitBreaker:   resilience.NewCircuitBreaker(resilience.DefaultCircuitBreakerConfig()),
 		retryPolicy:      retryPolicy,
+		tracer:           tr,
 		collector:        collector,
 		logger:           logger,
 	}
@@ -388,8 +401,16 @@ func (c *Client) invalidateCacheForTarget(userID string, target EntityTarget) {
 // AddReaction adds or replaces a user's reaction on a target.
 // Returns true if a previous reaction was replaced.
 func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, reactionType string) (bool, error) {
+	ctx, span := c.tracer.Start(ctx, "golikeit.AddReaction", tracing.Attributes{
+		"user_id":       userID,
+		"entity_type":   entityType,
+		"entity_id":     entityID,
+		"reaction_type": reactionType,
+	})
+	defer span.End()
 	start := time.Now()
 	if err := c.checkClosed(); err != nil {
+		span.RecordError(err)
 		return false, err
 	}
 
@@ -471,8 +492,15 @@ func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, 
 // RemoveReaction removes a user's reaction from a target.
 // Returns ErrReactionNotFound if no reaction exists.
 func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityID string) error {
+	ctx, span := c.tracer.Start(ctx, "golikeit.RemoveReaction", tracing.Attributes{
+		"user_id":     userID,
+		"entity_type": entityType,
+		"entity_id":   entityID,
+	})
+	defer span.End()
 	start := time.Now()
 	if err := c.checkClosed(); err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -539,7 +567,14 @@ func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityI
 // GetUserReaction retrieves the current reaction type for a user on a target.
 // Returns an empty string if no reaction exists.
 func (c *Client) GetUserReaction(ctx context.Context, userID, entityType, entityID string) (string, error) {
+	ctx, span := c.tracer.Start(ctx, "golikeit.GetUserReaction", tracing.Attributes{
+		"user_id":     userID,
+		"entity_type": entityType,
+		"entity_id":   entityID,
+	})
+	defer span.End()
 	if err := c.checkClosed(); err != nil {
+		span.RecordError(err)
 		return "", err
 	}
 
@@ -615,7 +650,13 @@ func (c *Client) HasUserReactionType(ctx context.Context, userID, entityType, en
 // GetEntityReactionCounts retrieves the counts per reaction type for an entity.
 // Returns counts for all configured reaction types (zero for types with no reactions).
 func (c *Client) GetEntityReactionCounts(ctx context.Context, entityType, entityID string) (map[string]int64, int64, error) {
+	ctx, span := c.tracer.Start(ctx, "golikeit.GetEntityReactionCounts", tracing.Attributes{
+		"entity_type": entityType,
+		"entity_id":   entityID,
+	})
+	defer span.End()
 	if err := c.checkClosed(); err != nil {
+		span.RecordError(err)
 		return nil, 0, err
 	}
 
