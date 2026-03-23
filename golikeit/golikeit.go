@@ -11,6 +11,7 @@ import (
 	"github.com/FlavioCFOliveira/GoLikeit/audit"
 	"github.com/FlavioCFOliveira/GoLikeit/cache"
 	"github.com/FlavioCFOliveira/GoLikeit/events"
+	"github.com/FlavioCFOliveira/GoLikeit/logging"
 	"github.com/FlavioCFOliveira/GoLikeit/metrics"
 	pag "github.com/FlavioCFOliveira/GoLikeit/pagination"
 	"github.com/FlavioCFOliveira/GoLikeit/ratelimit"
@@ -96,6 +97,9 @@ type Config struct {
 
 	// Metrics is the metrics collector (optional, defaults to no-op).
 	Metrics metrics.MetricsCollector
+
+	// Logger is the structured logger (optional, defaults to no-op).
+	Logger logging.Logger
 }
 
 // validateReactionTypes validates the reaction type configuration.
@@ -177,6 +181,7 @@ type Client struct {
 	limiter        *ratelimit.Limiter
 	circuitBreaker *resilience.CircuitBreaker
 	collector      metrics.MetricsCollector
+	logger         logging.Logger
 	paginationCfg  PaginationConfig
 
 	closed    bool
@@ -225,6 +230,12 @@ func New(config Config) (*Client, error) {
 		collector = metrics.DefaultMetrics()
 	}
 
+	// Use provided logger or fall back to no-op.
+	logger := config.Logger
+	if logger == nil {
+		logger = &logging.NoopLogger{}
+	}
+
 	client := &Client{
 		config:           config,
 		reactionTypes:    reactionTypeSet,
@@ -236,6 +247,7 @@ func New(config Config) (*Client, error) {
 		limiter:          rateLimiter,
 		circuitBreaker:   resilience.NewCircuitBreaker(resilience.DefaultCircuitBreakerConfig()),
 		collector:        collector,
+		logger:           logger,
 	}
 
 	return client, nil
@@ -356,9 +368,25 @@ func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, 
 		return e
 	}); err != nil {
 		c.collector.Counter(metrics.OperationErrors, metrics.Labels{"operation": "add_reaction"}).Inc()
+		c.logger.WithContext(ctx).Error("add_reaction failed", logging.Fields{
+			"user_id":       userID,
+			"entity_type":   entityType,
+			"entity_id":     entityID,
+			"reaction_type": reactionType,
+			"error":         err.Error(),
+		})
 		return false, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
 	}
-	c.collector.Histogram(metrics.OperationLatency, nil, metrics.Labels{"operation": "add_reaction"}).Record(float64(time.Since(start).Milliseconds()))
+	durationMs := float64(time.Since(start).Milliseconds())
+	c.collector.Histogram(metrics.OperationLatency, nil, metrics.Labels{"operation": "add_reaction"}).Record(durationMs)
+	c.logger.WithContext(ctx).Info("reaction added", logging.Fields{
+		"user_id":       userID,
+		"entity_type":   entityType,
+		"entity_id":     entityID,
+		"reaction_type": reactionType,
+		"replaced":      isReplaced,
+		"duration_ms":   durationMs,
+	})
 
 	// Invalidate cache
 	c.invalidateCacheForTarget(userID, target)
@@ -416,9 +444,22 @@ func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityI
 		return c.storage.RemoveReaction(ctx, userID, target)
 	}); err != nil {
 		c.collector.Counter(metrics.OperationErrors, metrics.Labels{"operation": "remove_reaction"}).Inc()
+		c.logger.WithContext(ctx).Error("remove_reaction failed", logging.Fields{
+			"user_id":     userID,
+			"entity_type": entityType,
+			"entity_id":   entityID,
+			"error":       err.Error(),
+		})
 		return err
 	}
-	c.collector.Histogram(metrics.OperationLatency, nil, metrics.Labels{"operation": "remove_reaction"}).Record(float64(time.Since(start).Milliseconds()))
+	durationMs := float64(time.Since(start).Milliseconds())
+	c.collector.Histogram(metrics.OperationLatency, nil, metrics.Labels{"operation": "remove_reaction"}).Record(durationMs)
+	c.logger.WithContext(ctx).Info("reaction removed", logging.Fields{
+		"user_id":     userID,
+		"entity_type": entityType,
+		"entity_id":   entityID,
+		"duration_ms": durationMs,
+	})
 
 	// Invalidate cache
 	c.invalidateCacheForTarget(userID, target)

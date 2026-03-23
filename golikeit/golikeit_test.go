@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FlavioCFOliveira/GoLikeit/logging"
 	"github.com/FlavioCFOliveira/GoLikeit/metrics"
 	"github.com/FlavioCFOliveira/GoLikeit/pagination"
 	"github.com/FlavioCFOliveira/GoLikeit/resilience"
@@ -1091,5 +1092,50 @@ func TestMetrics_CacheHitMissCounters(t *testing.T) {
 	hit, _ := col.counters[metrics.CacheHits]
 	if hit == nil || hit.value == 0 {
 		t.Error("Second GetUserReaction should increment cache hit counter")
+	}
+}
+
+// captureLogger records log entries for assertions.
+type captureLogger struct {
+	infos  []string
+	errors []string
+	fields logging.Fields
+}
+
+func (l *captureLogger) Debug(msg string, fields logging.Fields)         {}
+func (l *captureLogger) Warn(msg string, fields logging.Fields)          {}
+func (l *captureLogger) Info(msg string, fields logging.Fields)          { l.infos = append(l.infos, msg) }
+func (l *captureLogger) Error(msg string, fields logging.Fields)         { l.errors = append(l.errors, msg) }
+func (l *captureLogger) WithFields(fields logging.Fields) logging.Logger { l.fields = fields; return l }
+func (l *captureLogger) WithContext(ctx context.Context) logging.Logger  { return l }
+
+// TestLogging_AddReactionLogsInfo verifies that a successful AddReaction emits an INFO log.
+func TestLogging_AddReactionLogsInfo(t *testing.T) {
+	lg := &captureLogger{}
+	client, mock := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}, Logger: lg})
+	mock.addReactionResult = false
+
+	ctx := context.Background()
+	_, err := client.AddReaction(ctx, "user1", "post", "post1", "LIKE")
+	if err != nil {
+		t.Fatalf("AddReaction error: %v", err)
+	}
+
+	if len(lg.infos) == 0 || lg.infos[0] != "reaction added" {
+		t.Errorf("expected INFO log 'reaction added', got %v", lg.infos)
+	}
+}
+
+// TestLogging_AddReactionLogsError verifies that a failed AddReaction emits an ERROR log.
+func TestLogging_AddReactionLogsError(t *testing.T) {
+	lg := &captureLogger{}
+	client, mock := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}, Logger: lg})
+	mock.addReactionErr = errors.New("storage down")
+
+	ctx := context.Background()
+	_, _ = client.AddReaction(ctx, "user1", "post", "post1", "LIKE")
+
+	if len(lg.errors) == 0 || lg.errors[0] != "add_reaction failed" {
+		t.Errorf("expected ERROR log 'add_reaction failed', got %v", lg.errors)
 	}
 }
