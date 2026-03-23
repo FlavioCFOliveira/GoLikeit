@@ -1,0 +1,54 @@
+# Codecov configuration for GoLikeit
+# See: https://docs.codecov.io/docs/codecov-yaml
+
+codecov:
+  require_ci_to_pass: true
+  notify:
+    wait_for_ci: true
+
+coverage:
+  # Global coverage target
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 5%
+        if_ci_failed: error
+        informational: false
+        only_pulls: false
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+        if_ci_failed: error
+        informational: false
+        only_pulls: true
+
+  # Ignore patterns for generated/test files
+  ignore:
+    - "**/*_test.go"
+    - "**/mock_*.go"
+    - "**/mocks/**"
+    - "**/testdata/**"
+    - "**/vendor/**"
+    - "docs/**"
+    - "scripts/**"
+    - ".github/**"
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+  hide_project_coverage: false
+
+flags:
+  unit:
+    paths:
+      - "*/"
+    carryforward: true
+  integration:
+    paths:
+      - "*/"
+    carryforward: false
