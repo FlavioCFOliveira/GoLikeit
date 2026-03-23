@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FlavioCFOliveira/GoLikeit/metrics"
 	"github.com/FlavioCFOliveira/GoLikeit/pagination"
 	"github.com/FlavioCFOliveira/GoLikeit/resilience"
 )
@@ -980,5 +981,115 @@ func TestCircuitBreaker_ReturnsStorageUnavailableWhenOpen(t *testing.T) {
 	_, err := client.AddReaction(ctx, "user1", "post", "post1", "LIKE")
 	if !errors.Is(err, ErrStorageUnavailable) {
 		t.Errorf("open circuit error = %v, want ErrStorageUnavailable", err)
+	}
+}
+
+// testCounter is a simple counter for testing metrics instrumentation.
+type testCounter struct {
+	value int64
+}
+
+func (c *testCounter) Inc()              { c.value++ }
+func (c *testCounter) IncBy(d int64)     { c.value += d }
+func (c *testCounter) Value() int64      { return c.value }
+
+// testHistogram is a simple histogram for testing metrics instrumentation.
+type testHistogram struct {
+	count int64
+}
+
+func (h *testHistogram) Record(v float64)      { h.count++ }
+func (h *testHistogram) Count() int64          { return h.count }
+func (h *testHistogram) Sum() float64          { return 0 }
+func (h *testHistogram) Observe([]float64)     {}
+
+// testMetrics records which metric names were used.
+type testMetrics struct {
+	counters   map[string]*testCounter
+	histograms map[string]*testHistogram
+}
+
+func newTestMetrics() *testMetrics {
+	return &testMetrics{
+		counters:   make(map[string]*testCounter),
+		histograms: make(map[string]*testHistogram),
+	}
+}
+
+func (m *testMetrics) Counter(name string, labels metrics.Labels) metrics.Counter {
+	if _, ok := m.counters[name]; !ok {
+		m.counters[name] = &testCounter{}
+	}
+	return m.counters[name]
+}
+
+func (m *testMetrics) Histogram(name string, buckets []float64, labels metrics.Labels) metrics.Histogram {
+	if _, ok := m.histograms[name]; !ok {
+		m.histograms[name] = &testHistogram{}
+	}
+	return m.histograms[name]
+}
+
+func (m *testMetrics) Close() error { return nil }
+
+// TestMetrics_AddReactionRecordsLatency verifies AddReaction records a latency observation.
+func TestMetrics_AddReactionRecordsLatency(t *testing.T) {
+	col := newTestMetrics()
+	client, mock := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}, Metrics: col})
+	mock.addReactionResult = false
+
+	ctx := context.Background()
+	_, err := client.AddReaction(ctx, "user1", "post", "post1", "LIKE")
+	if err != nil {
+		t.Fatalf("AddReaction error: %v", err)
+	}
+
+	h, ok := col.histograms[metrics.OperationLatency]
+	if !ok || h.count == 0 {
+		t.Error("AddReaction should record latency histogram observation")
+	}
+}
+
+// TestMetrics_ErrorIncrements verifies that storage errors increment the error counter.
+func TestMetrics_ErrorIncrements(t *testing.T) {
+	col := newTestMetrics()
+	client, mock := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}, Metrics: col})
+	mock.addReactionErr = errors.New("storage down")
+
+	ctx := context.Background()
+	_, _ = client.AddReaction(ctx, "user1", "post", "post1", "LIKE")
+
+	c, ok := col.counters[metrics.OperationErrors]
+	if !ok || c.value == 0 {
+		t.Error("AddReaction storage error should increment error counter")
+	}
+}
+
+// TestMetrics_CacheHitMissCounters verifies cache hit and miss counters.
+func TestMetrics_CacheHitMissCounters(t *testing.T) {
+	col := newTestMetrics()
+	configWithCacheAndMetrics := Config{
+		ReactionTypes: []string{"LIKE"},
+		Cache:         DefaultCacheConfig(),
+		Metrics:       col,
+	}
+	client, mock := newTestClient(t, configWithCacheAndMetrics)
+	mock.getUserReactionResult = "LIKE"
+
+	ctx := context.Background()
+	// First call: cache miss → storage
+	client.GetUserReaction(ctx, "user1", "post", "post1") //nolint:errcheck
+
+	miss, _ := col.counters[metrics.CacheMisses]
+	if miss == nil || miss.value == 0 {
+		t.Error("First GetUserReaction should increment cache miss counter")
+	}
+
+	// Second call: cache hit
+	client.GetUserReaction(ctx, "user1", "post", "post1") //nolint:errcheck
+
+	hit, _ := col.counters[metrics.CacheHits]
+	if hit == nil || hit.value == 0 {
+		t.Error("Second GetUserReaction should increment cache hit counter")
 	}
 }
