@@ -10,6 +10,7 @@ import (
 	"github.com/FlavioCFOliveira/GoLikeit/metrics"
 	"github.com/FlavioCFOliveira/GoLikeit/pagination"
 	"github.com/FlavioCFOliveira/GoLikeit/resilience"
+	"github.com/FlavioCFOliveira/GoLikeit/tracing"
 )
 
 // mockStorage is a test double for ReactionStorage.
@@ -1286,5 +1287,91 @@ func TestRetry_ContextCancellationStopsRetry(t *testing.T) {
 	// Should not have exhausted all 10 retries within 80ms.
 	if mock.addReactionCallCount >= 10 {
 		t.Errorf("expected context to stop retries before 10 attempts, got %d", mock.addReactionCallCount)
+	}
+}
+
+// captureTracer records spans created during operations.
+type captureTracer struct {
+	spans []*captureSpan
+}
+
+type captureSpan struct {
+	name   string
+	attrs  tracing.Attributes
+	ended  bool
+	errors []error
+}
+
+func (t *captureTracer) Start(ctx context.Context, name string, attrs tracing.Attributes) (context.Context, tracing.Span) {
+	span := &captureSpan{name: name, attrs: attrs}
+	t.spans = append(t.spans, span)
+	return ctx, span
+}
+
+func (s *captureSpan) End()                   { s.ended = true }
+func (s *captureSpan) RecordError(err error)  { s.errors = append(s.errors, err) }
+func (s *captureSpan) SetAttribute(k, v string) {
+	if s.attrs == nil {
+		s.attrs = make(tracing.Attributes)
+	}
+	s.attrs[k] = v
+}
+
+// TestTracing_AddReactionCreatesSpan verifies AddReaction creates a span with correct attributes.
+func TestTracing_AddReactionCreatesSpan(t *testing.T) {
+	tr := &captureTracer{}
+	client, mock := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}, Tracer: tr})
+	mock.addReactionResult = false
+
+	_, err := client.AddReaction(context.Background(), "user1", "post", "p1", "LIKE")
+	if err != nil {
+		t.Fatalf("AddReaction error: %v", err)
+	}
+
+	if len(tr.spans) == 0 {
+		t.Fatal("expected at least one span to be created")
+	}
+	span := tr.spans[0]
+	if span.name != "golikeit.AddReaction" {
+		t.Errorf("span name = %q, want %q", span.name, "golikeit.AddReaction")
+	}
+	if !span.ended {
+		t.Error("span was not ended")
+	}
+	if span.attrs["user_id"] != "user1" {
+		t.Errorf("user_id attr = %q, want %q", span.attrs["user_id"], "user1")
+	}
+	if span.attrs["entity_type"] != "post" {
+		t.Errorf("entity_type attr = %q, want %q", span.attrs["entity_type"], "post")
+	}
+}
+
+// TestTracing_RemoveReactionCreatesSpan verifies RemoveReaction creates a span.
+func TestTracing_RemoveReactionCreatesSpan(t *testing.T) {
+	tr := &captureTracer{}
+	client, mock := newTestClient(t, Config{ReactionTypes: []string{"LIKE"}, Tracer: tr})
+	mock.removeReactionErr = nil
+
+	err := client.RemoveReaction(context.Background(), "user1", "post", "p1")
+	if err != nil {
+		t.Fatalf("RemoveReaction error: %v", err)
+	}
+
+	if len(tr.spans) == 0 {
+		t.Fatal("expected span to be created")
+	}
+	if tr.spans[0].name != "golikeit.RemoveReaction" {
+		t.Errorf("span name = %q, want %q", tr.spans[0].name, "golikeit.RemoveReaction")
+	}
+}
+
+// TestTracing_NoopTracerIsDefault verifies that no tracer config results in NoopTracer.
+func TestTracing_NoopTracerIsDefault(t *testing.T) {
+	client, err := New(Config{ReactionTypes: []string{"LIKE"}})
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	if _, ok := client.tracer.(tracing.NoopTracer); !ok {
+		t.Errorf("default tracer = %T, want tracing.NoopTracer", client.tracer)
 	}
 }
