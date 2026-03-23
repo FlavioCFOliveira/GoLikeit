@@ -117,10 +117,10 @@ The system defines a logical data model for persistence, regardless of the under
 **Entities and Attributes:**
 
 - **Reaction:**
-    - `id`: Unique identifier (UUID v4)
-    - `user_id`: Identifier of the user (UUID v4)
-    - `entity_type`: Type of the entity (alphanumeric snake_case)
-    - `entity_id`: Identifier of the specific entity instance (UUID v4)
+    - `id`: Unique internal identifier (implementation-defined, e.g. auto-increment or UUID)
+    - `user_id`: Identifier of the user (non-empty opaque string, max 256 characters)
+    - `entity_type`: Type of the entity (alphanumeric snake_case with optional hyphens)
+    - `entity_id`: Identifier of the specific entity instance (non-empty opaque string, max 256 characters)
     - `reaction_type`: Type of the reaction (uppercase alphanumeric)
     - `created_at`: Timestamp (ISO 8601 UTC)
 

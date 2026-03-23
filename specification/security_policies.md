@@ -23,6 +23,7 @@ All inputs are validated.
 
 - String inputs validated for length and content
 - Maximum lengths enforced (user_id: 256, entity_type: 64, entity_id: 256, reaction_type: 64)
+- user_id and entity_id are treated as opaque strings; the library does not validate a specific format such as UUID
 - Entity type pattern: `^[a-z0-9_-]+$`
 - Reaction type pattern: `[A-Z0-9_-]+`
 - Null bytes and control characters rejected
