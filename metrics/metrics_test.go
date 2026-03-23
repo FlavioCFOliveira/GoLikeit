@@ -148,19 +148,36 @@ func TestAtomicHistogram(t *testing.T) {
 func TestAtomicHistogramSum(t *testing.T) {
 	histogram := NewAtomicHistogram()
 
-	// Record known values
+	histogram.Record(1.5)
+	histogram.Record(2.7)
+	histogram.Record(0.001)
+
+	got := histogram.Sum()
+	want := 1.5 + 2.7 + 0.001
+	// Allow small floating-point tolerance.
+	const epsilon = 1e-9
+	diff := got - want
+	if diff < -epsilon || diff > epsilon {
+		t.Errorf("Sum() = %v, want %v (diff %v)", got, want, diff)
+	}
+
+	if histogram.Count() != 3 {
+		t.Errorf("Count() = %d, want 3", histogram.Count())
+	}
+}
+
+func TestAtomicHistogramSum_IntegerValues(t *testing.T) {
+	histogram := NewAtomicHistogram()
+
 	histogram.Record(10.0)
 	histogram.Record(20.0)
 	histogram.Record(30.0)
 
-	// Note: AtomicHistogram uses uint64 atomic which doesn't properly
-	// accumulate float64 values. This is a known limitation of the
-	// simple implementation. The Sum() method returns the last value
-	// stored in atomic, not the actual sum.
-	// For production use, a proper implementation would be needed.
-
-	// Just verify it doesn't panic
-	_ = histogram.Sum()
+	got := histogram.Sum()
+	want := 60.0
+	if got != want {
+		t.Errorf("Sum() = %v, want %v", got, want)
+	}
 }
 
 func BenchmarkNoopCounter_Inc(b *testing.B) {

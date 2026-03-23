@@ -2,6 +2,7 @@
 package metrics
 
 import (
+	"math"
 	"sync"
 	"sync/atomic"
 )
@@ -171,8 +172,14 @@ func NewAtomicHistogram() *AtomicHistogram {
 // Record implements Histogram.
 func (h *AtomicHistogram) Record(value float64) {
 	h.count.Add(1)
-	// Store float64 bits atomically
-	h.sum.Add(uint64(value))
+	// Atomically add float64 value using CAS loop with IEEE 754 bit representation.
+	for {
+		old := h.sum.Load()
+		newBits := math.Float64bits(math.Float64frombits(old) + value)
+		if h.sum.CompareAndSwap(old, newBits) {
+			break
+		}
+	}
 
 	h.mu.Lock()
 	h.values = append(h.values, value)
@@ -186,7 +193,7 @@ func (h *AtomicHistogram) Count() int64 {
 
 // Sum implements Histogram.
 func (h *AtomicHistogram) Sum() float64 {
-	return float64(h.sum.Load())
+	return math.Float64frombits(h.sum.Load())
 }
 
 // Observe implements Histogram.
