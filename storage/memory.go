@@ -456,3 +456,14 @@ func (m *MemoryStorage) Close() error {
 	m.counts = nil
 	return nil
 }
+
+// Ping verifies that the in-memory storage is open and operational.
+func (m *MemoryStorage) Ping(_ context.Context) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.closed {
+		return fmt.Errorf("storage is closed")
+	}
+	return nil
+}

@@ -487,6 +487,14 @@ func (r *RedisStorage) Close() error {
 	return nil
 }
 
+// Ping verifies connectivity to the Redis server.
+func (r *RedisStorage) Ping(ctx context.Context) error {
+	if r.client == nil {
+		return fmt.Errorf("client is nil")
+	}
+	return r.client.Ping(ctx).Err()
+}
+
 // parseInt64 parses a string to int64, returning 0 on error.
 func parseInt64(s string) (int64, error) {
 	var result int64
