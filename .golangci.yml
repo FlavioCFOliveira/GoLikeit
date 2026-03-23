@@ -1,0 +1,216 @@
+# golangci-lint configuration for GoLikeit
+# See: https://golangci-lint.run/usage/configuration/
+
+run:
+  # Timeout for analysis
+  timeout: 5m
+
+  # Which dirs to skip
+  skip-dirs:
+    - vendor
+    - .git
+    - .claude
+
+  # Which files to skip
+  skip-files:
+    - ".*\\.pb\\.go$"
+    - ".*_gen\\.go$"
+    - "mock_.*\\.go$"
+    - ".*_test\\.go$"
+
+  # Modules download mode
+  modules-download-mode: readonly
+
+# Output configuration
+output:
+  # Colored output
+  format: colored-line-number
+
+  # Print lines of code with issue
+  print-issued-lines: true
+
+  # Print linter name in the end of issue text
+  print-linter-name: true
+
+# Linters settings
+linters-settings:
+  # Error checking
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  # Go simple - simplify code
+  gosimple:
+    checks: ["all"]
+
+  # Go vet
+  govet:
+    enable-all: true
+    settings:
+      shadow:
+        strict: true
+
+  # Ineffassign - detect ineffectual assignments
+  ineffassign:
+    disable: false
+
+  # Staticcheck - static analysis
+  staticcheck:
+    checks: ["all"]
+
+  # Unused - detect unused constants, variables, functions, types
+  unused:
+    check-exported: false
+
+  # Gosec - security analysis
+  gosec:
+    severity: medium
+    confidence: medium
+    excludes:
+      - G104 # Errors unhandled (covered by errcheck)
+
+  # Bodyclose - check HTTP response body is closed
+  bodyclose:
+    disable: false
+
+  # Noctx - find HTTP requests without context
+  noctx:
+    disable: false
+
+  # Gofmt - check formatting
+  gofmt:
+    simplify: true
+
+  # Goimports - check imports formatting
+  goimports:
+    local-prefixes: github.com/FlavioCFOliveira/GoLikeit
+
+  # Cyclomatic complexity
+  cyclop:
+    max-complexity: 15
+    package-average: 10
+
+  # Line length
+  lll:
+    line-length: 120
+    tab-width: 4
+
+  # Function length
+  funlen:
+    lines: 60
+    statements: 40
+
+  # Cognitive complexity
+  gocognit:
+    min-complexity: 20
+
+  # Maintainability index
+  gomnd:
+    checks:
+      - argument
+      - case
+      - condition
+      - operation
+      - return
+
+  # Duplicated code
+  dupl:
+    threshold: 100
+
+# Linters to enable
+linters:
+  enable:
+    # Core linters
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Vet analysis
+    - ineffassign   # Ineffectual assignments
+    - staticcheck   # Static analysis
+    - unused        # Unused code
+
+    # Security
+    - gosec         # Security analysis
+
+    # Best practices
+    - bodyclose     # HTTP body close check
+    - noctx         # Context usage
+
+    # Formatting
+    - gofmt         # Go formatting
+    - goimports     # Imports formatting
+
+    # Complexity
+    - cyclop        # Cyclomatic complexity
+    - funlen        # Function length
+    - gocognit      # Cognitive complexity
+
+    # Other
+    - dupl          # Duplicate code
+    - misspell      # Misspellings
+    - unconvert     # Unnecessary conversions
+    - unparam       # Unused parameters
+    - wastedassign  # Wasted assignments
+
+  # Disable specific linters
+  disable:
+    # These are often noisy in Go projects
+    - gochecknoglobals  # Global variables (we have config globals)
+    - gochecknoinits    # init() functions (we use init for registration)
+
+  # Enable all by default
+  fast: false
+
+# Issues configuration
+issues:
+  # Excluding configuration per-path, per-linter, per-text and per-source
+  exclude-rules:
+    # Exclude some linters from running on tests
+    - path: _test\.go
+      linters:
+        - gosec
+        - dupl
+        - funlen
+        - cyclop
+        - gocognit
+
+    # Exclude known linter issues
+    - text: "weak cryptographic primitive"
+      linters:
+        - gosec
+
+    # Exclude shadow checking in test files
+    - path: _test\.go
+      text: "shadow"
+      linters:
+        - govet
+
+  # Maximum issues count per one linter
+  max-issues-per-linter: 50
+
+  # Maximum amount of issues with the same text
+  max-same-issues: 10
+
+  # Show only new issues
+  new: false
+
+  # Fix issues automatically
+  fix: false
+
+severity:
+  # Default severity
+  default-severity: error
+
+  # Rules
+  rules:
+    - linters:
+        - gosec
+      severity: warning
+    - linters:
+        - dupl
+      severity: warning
+    - linters:
+        - cyclop
+      severity: info
+    - linters:
+        - funlen
+      severity: info
