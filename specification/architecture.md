@@ -126,8 +126,8 @@ The optional caching layer improves system performance by reducing direct data s
 The system uses standardized data types and formats across all layers.
 
 **Primary Identifiers:**
-- **user_id**: UUID v4 format (36 characters).
-- **entity_id**: UUID v4 format (36 characters).
+- **user_id**: Non-empty opaque string, max 256 characters. The library does not enforce a specific format (e.g. UUID) to remain agnostic to the caller's identity system.
+- **entity_id**: Non-empty opaque string, max 256 characters. The library does not enforce a specific format to support diverse entity identification schemes.
 - **entity_type**: Alphanumeric lowercase with underscores `^[a-z0-9_]+$` (max 64 characters).
 - **reaction_type**: Uppercase alphanumeric with underscores and hyphens `^[A-Z0-9_-]+$` (max 64 characters).
 
@@ -140,8 +140,8 @@ The system uses standardized data types and formats across all layers.
 
 | Field | Go Type | Format / Constraint | Max Length |
 |-------|---------|---------------------|------------|
-| user_id | string | UUID v4 | 36 |
-| entity_id | string | UUID v4 | 36 |
+| user_id | string | non-empty opaque string | 256 |
+| entity_id | string | non-empty opaque string | 256 |
 | entity_type | string | `^[a-z0-9_]+$` | 64 |
 | reaction_type | string | `^[A-Z0-9_-]+$` | 64 |
 | created_at | time.Time | ISO 8601 UTC | N/A |
