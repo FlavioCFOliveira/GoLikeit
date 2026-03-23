@@ -169,3 +169,25 @@ bench:
 ## ci: Run all CI checks (build, test, lint, security)
 ci: fmt vet build test lint security
 	@echo "All CI checks passed"
+
+## fuzz: Run fuzz tests for critical functions
+fuzz:
+	@echo "Running fuzz tests..."
+	$(GOTEST) -tags=gofuzz -run=Fuzz -v ./validation/... ./golikeit/... ./business/...
+
+## fuzz-short: Run fuzz tests with limited iterations
+fuzz-short:
+	@echo "Running short fuzz tests (30 seconds per test)..."
+	$(GOTEST) -tags=gofuzz -fuzztime=30s -run=Fuzz ./validation/... ./golikeit/... ./business/...
+
+## fuzz-validation: Run validation fuzz tests only
+fuzz-validation:
+	$(GOTEST) -tags=gofuzz -run=Fuzz -v ./validation/...
+
+## fuzz-domain: Run domain fuzz tests only
+fuzz-domain:
+	$(GOTEST) -tags=gofuzz -run=Fuzz -v ./golikeit/...
+
+## fuzz-business: Run business fuzz tests only
+fuzz-business:
+	$(GOTEST) -tags=gofuzz -run=Fuzz -v ./business/...
