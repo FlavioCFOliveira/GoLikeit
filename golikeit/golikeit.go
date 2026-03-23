@@ -11,6 +11,7 @@ import (
 	"github.com/FlavioCFOliveira/GoLikeit/audit"
 	"github.com/FlavioCFOliveira/GoLikeit/cache"
 	"github.com/FlavioCFOliveira/GoLikeit/events"
+	"github.com/FlavioCFOliveira/GoLikeit/metrics"
 	pag "github.com/FlavioCFOliveira/GoLikeit/pagination"
 	"github.com/FlavioCFOliveira/GoLikeit/ratelimit"
 	"github.com/FlavioCFOliveira/GoLikeit/resilience"
@@ -92,6 +93,9 @@ type Config struct {
 
 	// Events is the event bus configuration (optional).
 	Events events.Config
+
+	// Metrics is the metrics collector (optional, defaults to no-op).
+	Metrics metrics.MetricsCollector
 }
 
 // validateReactionTypes validates the reaction type configuration.
@@ -172,6 +176,7 @@ type Client struct {
 	auditor        audit.Auditor
 	limiter        *ratelimit.Limiter
 	circuitBreaker *resilience.CircuitBreaker
+	collector      metrics.MetricsCollector
 	paginationCfg  PaginationConfig
 
 	closed    bool
@@ -214,6 +219,12 @@ func New(config Config) (*Client, error) {
 	// Create rate limiter (disabled by default)
 	rateLimiter := ratelimit.New(ratelimit.Config{Enabled: false})
 
+	// Use provided metrics collector or fall back to no-op.
+	collector := config.Metrics
+	if collector == nil {
+		collector = metrics.DefaultMetrics()
+	}
+
 	client := &Client{
 		config:           config,
 		reactionTypes:    reactionTypeSet,
@@ -224,6 +235,7 @@ func New(config Config) (*Client, error) {
 		auditor:          audit.NewNullAuditor(),
 		limiter:          rateLimiter,
 		circuitBreaker:   resilience.NewCircuitBreaker(resilience.DefaultCircuitBreakerConfig()),
+		collector:        collector,
 	}
 
 	return client, nil
@@ -311,6 +323,7 @@ func (c *Client) invalidateCacheForTarget(userID string, target EntityTarget) {
 // AddReaction adds or replaces a user's reaction on a target.
 // Returns true if a previous reaction was replaced.
 func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, reactionType string) (bool, error) {
+	start := time.Now()
 	if err := c.checkClosed(); err != nil {
 		return false, err
 	}
@@ -342,8 +355,10 @@ func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, 
 		isReplaced, e = c.storage.AddReaction(ctx, userID, target, reactionType)
 		return e
 	}); err != nil {
+		c.collector.Counter(metrics.OperationErrors, metrics.Labels{"operation": "add_reaction"}).Inc()
 		return false, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
 	}
+	c.collector.Histogram(metrics.OperationLatency, nil, metrics.Labels{"operation": "add_reaction"}).Record(float64(time.Since(start).Milliseconds()))
 
 	// Invalidate cache
 	c.invalidateCacheForTarget(userID, target)
@@ -375,6 +390,7 @@ func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, 
 // RemoveReaction removes a user's reaction from a target.
 // Returns ErrReactionNotFound if no reaction exists.
 func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityID string) error {
+	start := time.Now()
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
@@ -399,8 +415,10 @@ func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityI
 	if err := c.executeStorage(func() error {
 		return c.storage.RemoveReaction(ctx, userID, target)
 	}); err != nil {
+		c.collector.Counter(metrics.OperationErrors, metrics.Labels{"operation": "remove_reaction"}).Inc()
 		return err
 	}
+	c.collector.Histogram(metrics.OperationLatency, nil, metrics.Labels{"operation": "remove_reaction"}).Record(float64(time.Since(start).Milliseconds()))
 
 	// Invalidate cache
 	c.invalidateCacheForTarget(userID, target)
@@ -449,9 +467,11 @@ func (c *Client) GetUserReaction(ctx context.Context, userID, entityType, entity
 		cacheKey := fmt.Sprintf("user:%s:%s", userID, target.String())
 		if val, ok := c.cache.Get(cacheKey); ok {
 			if reactionType, ok := val.(string); ok {
+				c.collector.Counter(metrics.CacheHits, metrics.Labels{"cache": "user_reaction"}).Inc()
 				return reactionType, nil
 			}
 		}
+		c.collector.Counter(metrics.CacheMisses, metrics.Labels{"cache": "user_reaction"}).Inc()
 	}
 
 	var reactionType string
@@ -463,6 +483,7 @@ func (c *Client) GetUserReaction(ctx context.Context, userID, entityType, entity
 		if errors.Is(err, ErrReactionNotFound) {
 			return "", nil
 		}
+		c.collector.Counter(metrics.OperationErrors, metrics.Labels{"operation": "get_user_reaction"}).Inc()
 		return "", err
 	}
 
@@ -518,6 +539,7 @@ func (c *Client) GetEntityReactionCounts(ctx context.Context, entityType, entity
 		cacheKey := fmt.Sprintf("counts:%s", target.String())
 		if val, ok := c.cache.Get(cacheKey); ok {
 			if counts, ok := val.(EntityCounts); ok {
+				c.collector.Counter(metrics.CacheHits, metrics.Labels{"cache": "entity_counts"}).Inc()
 				// Return copy with all reaction types
 				result := make(map[string]int64, len(c.reactionTypeList))
 				for _, rt := range c.reactionTypeList {
@@ -526,6 +548,7 @@ func (c *Client) GetEntityReactionCounts(ctx context.Context, entityType, entity
 				return result, counts.Total, nil
 			}
 		}
+		c.collector.Counter(metrics.CacheMisses, metrics.Labels{"cache": "entity_counts"}).Inc()
 	}
 
 	var counts EntityCounts
@@ -534,6 +557,7 @@ func (c *Client) GetEntityReactionCounts(ctx context.Context, entityType, entity
 		counts, e = c.storage.GetEntityCounts(ctx, target)
 		return e
 	}); err != nil {
+		c.collector.Counter(metrics.OperationErrors, metrics.Labels{"operation": "get_entity_counts"}).Inc()
 		return nil, 0, err
 	}
 
