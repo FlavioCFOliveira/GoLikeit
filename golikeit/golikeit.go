@@ -11,6 +11,7 @@ import (
 	"github.com/FlavioCFOliveira/GoLikeit/cache"
 	"github.com/FlavioCFOliveira/GoLikeit/events"
 	pag "github.com/FlavioCFOliveira/GoLikeit/pagination"
+	"github.com/FlavioCFOliveira/GoLikeit/ratelimit"
 )
 
 // reactionTypePattern is the validation pattern for reaction types.
@@ -167,6 +168,7 @@ type Client struct {
 	cache           cache.Cache
 	eventBus        *events.Bus
 	auditor         audit.Auditor
+	limiter         *ratelimit.Limiter
 	paginationCfg   PaginationConfig
 
 	closed    bool
@@ -206,6 +208,9 @@ func New(config Config) (*Client, error) {
 		reactionCache = cache.New(config.Cache.MaxEntries)
 	}
 
+	// Create rate limiter (disabled by default)
+	rateLimiter := ratelimit.New(ratelimit.Config{Enabled: false})
+
 	client := &Client{
 		config:           config,
 		reactionTypes:    reactionTypeSet,
@@ -214,6 +219,7 @@ func New(config Config) (*Client, error) {
 		cache:           reactionCache,
 		paginationCfg:   config.Pagination,
 		auditor:         audit.NewNullAuditor(),
+		limiter:         rateLimiter,
 	}
 
 	return client, nil
@@ -297,6 +303,10 @@ func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, 
 		return false, err
 	}
 
+	if !c.limiter.Allow(userID) {
+		return false, fmt.Errorf("%w: %s", ErrRateLimitExceeded, userID)
+	}
+
 	target := EntityTarget{EntityType: entityType, EntityID: entityID}
 	if err := validateEntityTarget(target); err != nil {
 		return false, err
@@ -351,6 +361,10 @@ func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityI
 
 	if err := validateUserID(userID); err != nil {
 		return err
+	}
+
+	if !c.limiter.Allow(userID) {
+		return fmt.Errorf("%w: %s", ErrRateLimitExceeded, userID)
 	}
 
 	target := EntityTarget{EntityType: entityType, EntityID: entityID}

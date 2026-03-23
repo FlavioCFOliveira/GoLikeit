@@ -30,4 +30,7 @@ var (
 
 	// ErrClientClosed indicates that the client has been closed and is no longer usable.
 	ErrClientClosed = errors.New("client is closed")
+
+	// ErrRateLimitExceeded indicates that the user has exceeded the configured rate limit.
+	ErrRateLimitExceeded = errors.New("rate limit exceeded")
 )
