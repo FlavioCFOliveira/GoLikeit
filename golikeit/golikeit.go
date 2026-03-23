@@ -100,6 +100,10 @@ type Config struct {
 
 	// Logger is the structured logger (optional, defaults to no-op).
 	Logger logging.Logger
+
+	// RetryPolicy configures retry behavior for transient storage failures.
+	// If nil, a default policy (3 attempts, 100ms initial backoff, 5s max) is used.
+	RetryPolicy *resilience.RetryPolicy
 }
 
 // validateReactionTypes validates the reaction type configuration.
@@ -180,6 +184,7 @@ type Client struct {
 	auditor        audit.Auditor
 	limiter        *ratelimit.Limiter
 	circuitBreaker *resilience.CircuitBreaker
+	retryPolicy    resilience.RetryPolicy
 	collector      metrics.MetricsCollector
 	logger         logging.Logger
 	paginationCfg  PaginationConfig
@@ -236,6 +241,17 @@ func New(config Config) (*Client, error) {
 		logger = &logging.NoopLogger{}
 	}
 
+	// Configure retry policy.
+	retryPolicy := resilience.RetryPolicy{
+		MaxAttempts:    3,
+		InitialBackoff: 100 * time.Millisecond,
+		MaxBackoff:     5 * time.Second,
+		Jitter:         0.1,
+	}
+	if config.RetryPolicy != nil {
+		retryPolicy = *config.RetryPolicy
+	}
+
 	client := &Client{
 		config:           config,
 		reactionTypes:    reactionTypeSet,
@@ -246,6 +262,7 @@ func New(config Config) (*Client, error) {
 		auditor:          audit.NewNullAuditor(),
 		limiter:          rateLimiter,
 		circuitBreaker:   resilience.NewCircuitBreaker(resilience.DefaultCircuitBreakerConfig()),
+		retryPolicy:      retryPolicy,
 		collector:        collector,
 		logger:           logger,
 	}
@@ -268,16 +285,52 @@ func (c *Client) checkClosed() error {
 	return nil
 }
 
-// executeStorage runs fn through the circuit breaker.
-// If the circuit is open, ErrStorageUnavailable is returned immediately.
-func (c *Client) executeStorage(fn func() error) error {
-	if err := c.circuitBreaker.Execute(fn); err != nil {
-		if errors.Is(err, resilience.ErrCircuitOpen) {
-			return ErrStorageUnavailable
-		}
-		return err
+// isStorageRetryable classifies errors as retryable or non-retryable.
+// Validation errors, not-found errors, and circuit-open errors are not retried.
+func isStorageRetryable(err error) bool {
+	if err == nil {
+		return false
 	}
-	return nil
+	switch {
+	case errors.Is(err, context.Canceled),
+		errors.Is(err, context.DeadlineExceeded),
+		errors.Is(err, resilience.ErrCircuitOpen),
+		errors.Is(err, ErrReactionNotFound),
+		errors.Is(err, ErrInvalidInput),
+		errors.Is(err, ErrInvalidReactionType),
+		errors.Is(err, ErrRateLimitExceeded),
+		errors.Is(err, ErrStorageUnavailable):
+		return false
+	}
+	return true
+}
+
+// executeStorage runs fn through the retry policy and circuit breaker.
+// Transient errors are retried; validation and circuit-open errors are not.
+// If the circuit is open, ErrStorageUnavailable is returned immediately.
+func (c *Client) executeStorage(ctx context.Context, fn func() error) error {
+	policy := resilience.RetryPolicy{
+		MaxAttempts:    c.retryPolicy.MaxAttempts,
+		InitialBackoff: c.retryPolicy.InitialBackoff,
+		MaxBackoff:     c.retryPolicy.MaxBackoff,
+		Jitter:         c.retryPolicy.Jitter,
+		ShouldRetry:    isStorageRetryable,
+	}
+
+	var lastErr error
+	retryErr := policy.RetryWithContext(ctx, func(ctx context.Context) error {
+		e := c.circuitBreaker.Execute(fn)
+		lastErr = e
+		return e
+	})
+
+	if retryErr == nil {
+		return nil
+	}
+	if errors.Is(lastErr, resilience.ErrCircuitOpen) {
+		return ErrStorageUnavailable
+	}
+	return lastErr
 }
 
 // validateReactionType checks if a reaction type is valid.
@@ -362,7 +415,7 @@ func (c *Client) AddReaction(ctx context.Context, userID, entityType, entityID, 
 	}
 
 	var isReplaced bool
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		var e error
 		isReplaced, e = c.storage.AddReaction(ctx, userID, target, reactionType)
 		return e
@@ -440,7 +493,7 @@ func (c *Client) RemoveReaction(ctx context.Context, userID, entityType, entityI
 		return ErrStorageUnavailable
 	}
 
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		return c.storage.RemoveReaction(ctx, userID, target)
 	}); err != nil {
 		c.collector.Counter(metrics.OperationErrors, metrics.Labels{"operation": "remove_reaction"}).Inc()
@@ -516,7 +569,7 @@ func (c *Client) GetUserReaction(ctx context.Context, userID, entityType, entity
 	}
 
 	var reactionType string
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		var e error
 		reactionType, e = c.storage.GetUserReaction(ctx, userID, target)
 		return e
@@ -593,7 +646,7 @@ func (c *Client) GetEntityReactionCounts(ctx context.Context, entityType, entity
 	}
 
 	var counts EntityCounts
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		var e error
 		counts, e = c.storage.GetEntityCounts(ctx, target)
 		return e
@@ -656,7 +709,7 @@ func (c *Client) GetEntityReactionDetail(ctx context.Context, entityType, entity
 	// Get recent users if requested
 	if options.MaxRecentUsers > 0 {
 		var recent []RecentUserReaction
-		if err := c.executeStorage(func() error {
+		if err := c.executeStorage(ctx, func() error {
 			var e error
 			recent, e = c.storage.GetRecentReactions(ctx, target, options.MaxRecentUsers*len(c.reactionTypeList))
 			return e
@@ -679,7 +732,7 @@ func (c *Client) GetEntityReactionDetail(ctx context.Context, entityType, entity
 
 	// Get last reaction time
 	var lastTime *time.Time
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		var e error
 		lastTime, e = c.storage.GetLastReactionTime(ctx, target)
 		return e
@@ -716,7 +769,7 @@ func (c *Client) GetUserReactions(ctx context.Context, userID string, pagination
 
 	var reactions []UserReaction
 	var total int64
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		var e error
 		reactions, total, e = c.storage.GetUserReactions(ctx, userID, pagination)
 		return e
@@ -744,7 +797,7 @@ func (c *Client) GetUserReactionCounts(ctx context.Context, userID string, entit
 	}
 
 	var counts map[string]int64
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		var e error
 		counts, e = c.storage.GetUserReactionCounts(ctx, userID, entityTypeFilter)
 		return e
@@ -784,7 +837,7 @@ func (c *Client) GetUserReactionsByType(ctx context.Context, userID, reactionTyp
 
 	var reactions []UserReaction
 	var total int64
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		var e error
 		reactions, total, e = c.storage.GetUserReactionsByType(ctx, userID, reactionType, pagination)
 		return e
@@ -821,7 +874,7 @@ func (c *Client) GetEntityReactions(ctx context.Context, entityType, entityID st
 
 	var reactions []EntityReaction
 	var total int64
-	if err := c.executeStorage(func() error {
+	if err := c.executeStorage(ctx, func() error {
 		var e error
 		reactions, total, e = c.storage.GetEntityReactions(ctx, target, pagination)
 		return e
