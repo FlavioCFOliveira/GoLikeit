@@ -142,10 +142,9 @@ func TestValidateEntityType(t *testing.T) {
 			errMsg:     "lowercase letters",
 		},
 		{
-			name:       "contains hyphen",
+			name:       "valid with hyphen",
 			entityType: "blog-post",
-			wantErr:    true,
-			errMsg:     "lowercase letters",
+			wantErr:    false,
 		},
 		{
 			name:       "contains space",

@@ -358,9 +358,9 @@ func TestValidateFunctions(t *testing.T) {
 		}{
 			{"valid", "photo", true},
 			{"valid with underscore", "blog_post", true},
+			{"valid with hyphen", "blog-post", true},
 			{"empty", "", false},
 			{"uppercase", "Photo", false},
-			{"with hyphen", "blog-post", false},
 			{"too long", string(make([]byte, 65)), false},
 		}
 		for _, tt := range tests {

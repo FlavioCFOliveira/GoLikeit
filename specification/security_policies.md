@@ -23,7 +23,7 @@ All inputs are validated.
 
 - String inputs validated for length and content
 - Maximum lengths enforced (user_id: 256, entity_type: 64, entity_id: 256, reaction_type: 64)
-- Entity type pattern: `[a-zA-Z0-9_-]+`
+- Entity type pattern: `^[a-z0-9_-]+$`
 - Reaction type pattern: `[A-Z0-9_-]+`
 - Null bytes and control characters rejected
 
@@ -102,7 +102,7 @@ Secure configuration handling.
 ## Acceptance Criteria
 
 1. **AC1:** All string inputs validated for length
-2. **AC2:** Entity types validated against `[a-zA-Z0-9_-]+`
+2. **AC2:** Entity types validated against `^[a-z0-9_-]+$`
 3. **AC3:** Reaction types validated against `[A-Z0-9_-]+`
 4. **AC4:** Module fails if reaction type configuration invalid
 5. **AC5:** All queries use parameterized statements

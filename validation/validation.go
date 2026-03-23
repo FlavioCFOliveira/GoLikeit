@@ -17,9 +17,9 @@ const (
 
 // Pre-compiled regex patterns for validation.
 var (
-	// EntityTypePattern matches lowercase alphanumeric, underscore.
-	// Pattern: ^[a-z0-9_]+$
-	entityTypeRegex = regexp.MustCompile(`^[a-z0-9_]+$`)
+	// EntityTypePattern matches lowercase alphanumeric, underscore, hyphen.
+	// Pattern: ^[a-z0-9_-]+$
+	entityTypeRegex = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 	// ReactionTypePattern matches uppercase alphanumeric, underscore, hyphen.
 	// Pattern: ^[A-Z0-9_-]+$
@@ -77,7 +77,7 @@ func ValidateUserID(userID string) error {
 
 // ValidateEntityType validates an entity type according to security policies.
 // Requirements:
-//   - Must match pattern: ^[a-z0-9_]+$ (lowercase alphanumeric and underscore)
+//   - Must match pattern: ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)
 //   - Maximum length: 64 characters
 func ValidateEntityType(entityType string) error {
 	if entityType == "" {
@@ -97,7 +97,7 @@ func ValidateEntityType(entityType string) error {
 	if !entityTypeRegex.MatchString(entityType) {
 		return &ValidationError{
 			Field:  "entity_type",
-			Reason: "must contain only lowercase letters, numbers, and underscores",
+			Reason: "must contain only lowercase letters, numbers, underscores, and hyphens",
 		}
 	}
 
