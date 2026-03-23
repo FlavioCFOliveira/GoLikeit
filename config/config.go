@@ -226,7 +226,7 @@ type EventsConfig struct {
 	// Enabled enables or disables the event system. Default: true.
 	Enabled bool
 
-	// AsyncWorkers is the number of async event workers. Default: 10.
+	// AsyncWorkers is the number of async event workers. Default: 5.
 	AsyncWorkers int
 
 	// QueueSize is the size of the async event queue. Default: 1000.
@@ -261,7 +261,7 @@ func (ec EventsConfig) Validate() error {
 func DefaultEventsConfig() EventsConfig {
 	return EventsConfig{
 		Enabled:                  true,
-		AsyncWorkers:             10,
+		AsyncWorkers:             5,
 		QueueSize:                1000,
 		EventTimeout:             5 * time.Second,
 		EnableSyncSubscriptions:  true,
